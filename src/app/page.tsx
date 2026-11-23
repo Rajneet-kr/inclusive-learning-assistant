@@ -12,6 +12,7 @@ import {
   CheckCircle,
   HelpCircle,
   ArrowRight,
+  Upload,
 } from "lucide-react";
 import { useAccessibilitySettings } from "@/hooks/useAccessibilitySettings";
 import { AccessibilityToolbar } from "@/components/accessibility/AccessibilityToolbar";
@@ -22,26 +23,31 @@ import { CaptionPanel } from "@/components/accessibility/CaptionPanel";
 import { QuizCard } from "@/components/practice/QuizCard";
 import { FlashcardDeck } from "@/components/practice/FlashcardDeck";
 import { StudyPlanTimeline } from "@/components/practice/StudyPlanTimeline";
-import { UploadDropzone } from "@/components/upload/UploadDropzone";
-import { TextInput } from "@/components/upload/TextInput";
+import { UploadModal } from "@/components/upload/UploadModal";
 import {
   sampleBiologyNote,
   sampleLectureTranscript,
   samplePracticePlan,
   SampleBiologyNote,
 } from "@/lib/sampleData";
+import { PracticeResponse, TranscribeResponse } from "@/types/api";
 
 export default function HomePage() {
   const { settings, isLoaded, setProfile, updateSettings, resetSettings } =
     useAccessibilitySettings();
 
   const [activeTab, setActiveTab] = React.useState<
-    "dyslexia" | "low_vision" | "hearing" | "practice" | "upload"
+    "dyslexia" | "low_vision" | "hearing" | "practice"
   >("dyslexia");
 
+  const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
   const [loadedNote, setLoadedNote] = React.useState<SampleBiologyNote | null>(null);
-  const [pastedText, setPastedText] = React.useState("");
-  const [loadNotice, setLoadNotice] = React.useState(false);
+  const [practicePlan, setPracticePlan] = React.useState<PracticeResponse>(samplePracticePlan);
+  const [transcript, setTranscript] = React.useState<TranscribeResponse>(sampleLectureTranscript);
+  const [statusNotice, setStatusNotice] = React.useState<{
+    message: string;
+    type: "live" | "fallback";
+  } | null>(null);
 
   // Sync activeTab with accessibility profile selection
   React.useEffect(() => {
@@ -53,46 +59,40 @@ export default function HomePage() {
   // 1-Click Load Sample Note (Offline-ready fallback)
   const handleLoadSample = () => {
     setLoadedNote(sampleBiologyNote);
-    setLoadNotice(true);
-    setTimeout(() => setLoadNotice(false), 4000);
+    setPracticePlan(samplePracticePlan);
+    setTranscript(sampleLectureTranscript);
+    setStatusNotice({
+      message: "Loaded bundled sample Biology note. Zero network calls or API keys required.",
+      type: "fallback",
+    });
+    setTimeout(() => setStatusNotice(null), 5000);
   };
 
-  const handleProcessPastedText = () => {
-    if (!pastedText.trim()) return;
-    // Create an in-memory document from the pasted text
-    const customDoc: SampleBiologyNote = {
-      documentId: `doc_custom_${Date.now()}`,
-      status: "ready",
-      inputKind: "text",
-      title: "Custom Pasted Lecture Notes",
-      subject: "General",
-      gradeLevel: "All",
-      sourceSummary: pastedText.slice(0, 120) + "...",
-      extractedText: pastedText,
-      chunks: [
-        {
-          id: "chunk_c1",
-          index: 0,
-          heading: "Section 1",
-          text: pastedText,
-          keyTerms: ["notes", "study", "concepts"],
-        },
-      ],
-      simplifiedSections: [
-        {
-          chunkId: "chunk_c1",
-          title: "Section 1",
-          simpleText: pastedText,
-          keyIdea: "Custom study material summary.",
-          jargon: [],
-          readingTimeSeconds: Math.ceil(pastedText.split(" ").length / 3),
-        },
-      ],
-      warnings: [],
-      fallbackUsed: true,
-    };
-    setLoadedNote(customDoc);
-    setLoadNotice(true);
+  const handleProcessingComplete = (data: {
+    note: SampleBiologyNote;
+    practice?: PracticeResponse;
+    transcript?: TranscribeResponse;
+  }) => {
+    setLoadedNote(data.note);
+    if (data.practice) setPracticePlan(data.practice);
+    if (data.transcript) setTranscript(data.transcript);
+
+    if (data.note.fallbackUsed) {
+      setStatusNotice({
+        message: "AI pipeline returned fast fallback output (timeout or quota safeguard active).",
+        type: "fallback",
+      });
+    } else {
+      setStatusNotice({
+        message: "Successfully processed live with Google Gemini & Deepgram Nova-3!",
+        type: "live",
+      });
+    }
+
+    // Switch view to match student profile
+    if (settings.profile === "dyslexia") setActiveTab("dyslexia");
+    else if (settings.profile === "low_vision") setActiveTab("low_vision");
+    else if (settings.profile === "hearing") setActiveTab("hearing");
   };
 
   if (!isLoaded) {
@@ -130,7 +130,7 @@ export default function HomePage() {
                   Inclusive Learning Assistant
                 </h1>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                  Guest Mode &bull; Offline Ready
+                  Guest Mode &bull; Offline Safe
                 </span>
               </div>
               <p className="text-xs text-slate-500">
@@ -156,7 +156,7 @@ export default function HomePage() {
         >
           <div className="relative z-10 max-w-2xl">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-semibold mb-4 backdrop-blur-xs">
-              <Zap className="w-3.5 h-3.5 text-yellow-300" /> Hackathon Demo Ready &bull; Zero Network Fallback
+              <Zap className="w-3.5 h-3.5 text-yellow-300" /> Hackathon Demo Ready &bull; Gemini &amp; Deepgram Live
             </div>
             <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl mb-3">
               Learn Without Barriers.
@@ -177,10 +177,10 @@ export default function HomePage() {
 
               <button
                 type="button"
-                onClick={() => setActiveTab("upload")}
+                onClick={() => setIsUploadModalOpen(true)}
                 className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-blue-800/80 hover:bg-blue-800 text-white font-semibold text-base border border-blue-400/30 transition-colors"
               >
-                <FileText className="w-4 h-4" /> Upload or Paste Text
+                <Upload className="w-4 h-4 text-blue-200" /> Upload or Paste Text
               </button>
             </div>
           </div>
@@ -189,20 +189,22 @@ export default function HomePage() {
           <div className="absolute right-0 bottom-0 translate-x-12 translate-y-12 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
         </section>
 
-        {/* Load Notice Toast */}
-        {loadNotice && (
+        {/* Status Notice Toast / Banner */}
+        {statusNotice && (
           <div
             role="status"
-            className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between shadow-xs animate-in fade-in"
+            className={`p-4 rounded-xl border flex items-center justify-between shadow-xs animate-in fade-in ${
+              statusNotice.type === "live"
+                ? "bg-blue-50 border-blue-200 text-blue-950"
+                : "bg-emerald-50 border-emerald-200 text-emerald-950"
+            }`}
           >
             <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-600" />
-              <span className="font-semibold text-sm">
-                Sample Note Loaded Successfully! Showing offline bundled Biology notes.
-              </span>
+              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span className="font-semibold text-sm">{statusNotice.message}</span>
             </div>
-            <span className="text-xs bg-emerald-200/60 font-mono px-2 py-0.5 rounded text-emerald-900">
-              Zero Network Calls
+            <span className="text-xs bg-white/80 font-mono px-2.5 py-1 rounded-md border border-current opacity-80 shrink-0">
+              {statusNotice.type === "live" ? "Gemini & Deepgram Live" : "Offline Fallback"}
             </span>
           </div>
         )}
@@ -225,15 +227,24 @@ export default function HomePage() {
               No Document Loaded Yet
             </h3>
             <p className="text-slate-600 max-w-md mx-auto text-sm mb-6">
-              Click the button below to immediately load our bundled sample note on <strong>Photosynthesis &amp; Cellular Energy</strong>, complete with pre-calculated chunks and practice questions.
+              Click the button below to load our prepared sample note on <strong>Photosynthesis</strong>, or click <strong>Upload or Paste Text</strong> to process your own materials.
             </p>
-            <button
-              type="button"
-              onClick={handleLoadSample}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-sm transition-all"
-            >
-              <Sparkles className="w-4 h-4 text-amber-300" /> Load Sample Biology Note
-            </button>
+            <div className="flex justify-center gap-3">
+              <button
+                type="button"
+                onClick={handleLoadSample}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-sm transition-all"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300" /> Load Sample Biology Note
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsUploadModalOpen(true)}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-300 font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <Upload className="w-4 h-4" /> Upload Custom Notes
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-6">
@@ -242,7 +253,7 @@ export default function HomePage() {
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full">
-                    {loadedNote.subject || "Biology"} &bull; {loadedNote.gradeLevel || "Grade 10"}
+                    {loadedNote.subject || "General"} &bull; {loadedNote.gradeLevel || "Grade 10"}
                   </span>
                   <span className="text-xs text-slate-500 font-mono">
                     ID: {loadedNote.documentId}
@@ -258,10 +269,16 @@ export default function HomePage() {
 
               <div className="flex items-center gap-2">
                 <span className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 font-semibold">
-                  {loadedNote.chunks.length} Chunks Available
+                  {loadedNote.chunks.length} Chunks Generated
                 </span>
-                <span className="text-xs px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200">
-                  Offline Fallback Ready
+                <span
+                  className={`text-xs px-3 py-1.5 rounded-lg font-semibold border ${
+                    loadedNote.fallbackUsed
+                      ? "bg-amber-50 text-amber-900 border-amber-200"
+                      : "bg-emerald-50 text-emerald-900 border-emerald-200"
+                  }`}
+                >
+                  {loadedNote.fallbackUsed ? "Fallback Safeguard" : "Live AI Model"}
                 </span>
               </div>
             </div>
@@ -329,22 +346,7 @@ export default function HomePage() {
                 }`}
               >
                 <Sparkles className="w-4 h-4" />
-                Practice &amp; Quiz Deck
-              </button>
-
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeTab === "upload"}
-                onClick={() => setActiveTab("upload")}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                  activeTab === "upload"
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                }`}
-              >
-                <FileText className="w-4 h-4" />
-                New Upload
+                Practice &amp; Quiz Deck ({practicePlan.quiz.length} Qs)
               </button>
             </nav>
 
@@ -367,37 +369,30 @@ export default function HomePage() {
             {activeTab === "hearing" && (
               <div className="space-y-6">
                 <CaptionPanel />
-                <TranscriptViewer transcript={sampleLectureTranscript} />
+                <TranscriptViewer transcript={transcript} />
               </div>
             )}
 
             {activeTab === "practice" && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <QuizCard questions={samplePracticePlan.quiz} />
-                  <FlashcardDeck flashcards={samplePracticePlan.flashcards} />
+                  <QuizCard questions={practicePlan.quiz} />
+                  <FlashcardDeck flashcards={practicePlan.flashcards} />
                 </div>
-                <StudyPlanTimeline studyPlan={samplePracticePlan.studyPlan} />
-              </div>
-            )}
-
-            {activeTab === "upload" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <UploadDropzone
-                  onFileSelect={(file) => {
-                    alert(`Selected: ${file.name}. Phase 2 will process this via /api/ingest!`);
-                  }}
-                />
-                <TextInput
-                  value={pastedText}
-                  onChange={setPastedText}
-                  onSubmit={handleProcessPastedText}
-                />
+                <StudyPlanTimeline studyPlan={practicePlan.studyPlan} />
               </div>
             )}
           </div>
         )}
       </main>
+
+      {/* Upload & Processing Modal */}
+      <UploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        activeProfile={settings.profile}
+        onProcessingComplete={handleProcessingComplete}
+      />
 
       {/* Footer */}
       <footer className="border-t border-slate-200 py-6 mt-16 text-center text-xs text-slate-500">
