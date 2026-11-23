@@ -30,7 +30,14 @@ import {
   samplePracticePlan,
   SampleBiologyNote,
 } from "@/lib/sampleData";
-import { PracticeResponse, TranscribeResponse } from "@/types/api";
+import {
+  PracticeResponse,
+  TranscribeResponse,
+  TranslatedSimplifiedSection,
+  SupportedLanguageCode,
+  TranslationResult,
+} from "@/types/api";
+import { getLanguageOption, getTextDirection } from "@/lib/i18n";
 
 export default function HomePage() {
   const { settings, isLoaded, setProfile, updateSettings, resetSettings } =
@@ -44,6 +51,8 @@ export default function HomePage() {
   const [loadedNote, setLoadedNote] = React.useState<SampleBiologyNote | null>(null);
   const [practicePlan, setPracticePlan] = React.useState<PracticeResponse>(samplePracticePlan);
   const [transcript, setTranscript] = React.useState<TranscribeResponse>(sampleLectureTranscript);
+  const [translatedSections, setTranslatedSections] = React.useState<TranslatedSimplifiedSection[] | null>(null);
+  const [isTranslating, setIsTranslating] = React.useState(false);
   const [statusNotice, setStatusNotice] = React.useState<{
     message: string;
     type: "live" | "fallback";
@@ -56,16 +65,110 @@ export default function HomePage() {
     else if (settings.profile === "hearing") setActiveTab("hearing");
   }, [settings.profile]);
 
+  const fetchTranslationForNote = React.useCallback(
+    async (note: SampleBiologyNote, lang: SupportedLanguageCode) => {
+      if (lang === "en") {
+        setTranslatedSections(null);
+        return;
+      }
+
+      // Check offline sample fixtures for biology note
+      if (note.documentId === "doc_bio_sample_01") {
+        if (lang === "hi") {
+          try {
+            const res = await fetch("/samples/biology-notes-hi.json");
+            if (res.ok) {
+              const data = await res.json();
+              setTranslatedSections(data.sections);
+              setStatusNotice({
+                message: "Loaded pre-translated Hindi sample note (offline safe).",
+                type: "fallback",
+              });
+              setTimeout(() => setStatusNotice(null), 5000);
+              return;
+            }
+          } catch (err) {
+            console.warn("Failed to load offline Hindi fixture:", err);
+          }
+        } else if (lang === "es") {
+          try {
+            const res = await fetch("/samples/biology-notes-es.json");
+            if (res.ok) {
+              const data = await res.json();
+              setTranslatedSections(data.sections);
+              setStatusNotice({
+                message: "Loaded pre-translated Spanish sample note (offline safe).",
+                type: "fallback",
+              });
+              setTimeout(() => setStatusNotice(null), 5000);
+              return;
+            }
+          } catch (err) {
+            console.warn("Failed to load offline Spanish fixture:", err);
+          }
+        }
+      }
+
+      // Live translation API call
+      setIsTranslating(true);
+      try {
+        const langOption = getLanguageOption(lang);
+        const res = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            documentId: note.documentId,
+            targetLanguage: lang,
+            sections: note.simplifiedSections,
+          }),
+        });
+
+        if (res.ok) {
+          const result: TranslationResult = await res.json();
+          setTranslatedSections(result.sections);
+          setStatusNotice({
+            message: result.fallbackUsed
+              ? `Translation returned fallback text (safeguard active).`
+              : `Successfully translated into ${langOption.nativeLabel} (${langOption.label})!`,
+            type: result.fallbackUsed ? "fallback" : "live",
+          });
+        } else {
+          setTranslatedSections(null);
+        }
+      } catch (err) {
+        console.error("Translation request failed:", err);
+        setTranslatedSections(null);
+      } finally {
+        setIsTranslating(false);
+        setTimeout(() => setStatusNotice(null), 5000);
+      }
+    },
+    []
+  );
+
+  const handleLanguageChange = (newLang: SupportedLanguageCode) => {
+    updateSettings({ language: newLang });
+    if (loadedNote) {
+      fetchTranslationForNote(loadedNote, newLang);
+    }
+  };
+
   // 1-Click Load Sample Note (Offline-ready fallback)
   const handleLoadSample = () => {
     setLoadedNote(sampleBiologyNote);
     setPracticePlan(samplePracticePlan);
     setTranscript(sampleLectureTranscript);
-    setStatusNotice({
-      message: "Loaded bundled sample Biology note. Zero network calls or API keys required.",
-      type: "fallback",
-    });
-    setTimeout(() => setStatusNotice(null), 5000);
+    const lang = settings.language || "en";
+    if (lang !== "en") {
+      fetchTranslationForNote(sampleBiologyNote, lang);
+    } else {
+      setTranslatedSections(null);
+      setStatusNotice({
+        message: "Loaded bundled sample Biology note. Zero network calls or API keys required.",
+        type: "fallback",
+      });
+      setTimeout(() => setStatusNotice(null), 5000);
+    }
   };
 
   const handleProcessingComplete = (data: {
@@ -75,6 +178,12 @@ export default function HomePage() {
   }) => {
     // 1. Fully replace current document note state
     setLoadedNote(data.note);
+    const lang = settings.language || "en";
+    if (lang !== "en") {
+      fetchTranslationForNote(data.note, lang);
+    } else {
+      setTranslatedSections(null);
+    }
 
     // 2. Fully replace practice plan
     if (data.practice) {
@@ -282,6 +391,8 @@ export default function HomePage() {
           onProfileChange={setProfile}
           onUpdateSettings={updateSettings}
           onReset={resetSettings}
+          onLanguageChange={handleLanguageChange}
+          isTranslating={isTranslating}
         />
 
         {/* If no note is loaded yet, show prompt banner */}
@@ -420,8 +531,10 @@ export default function HomePage() {
             {/* View Mode Panels */}
             {activeTab === "dyslexia" && (
               <DyslexiaReader
-                sections={loadedNote.simplifiedSections}
+                sections={translatedSections || loadedNote.simplifiedSections}
                 settings={settings}
+                language={settings.language || "en"}
+                direction={getTextDirection(settings.language || "en")}
               />
             )}
 

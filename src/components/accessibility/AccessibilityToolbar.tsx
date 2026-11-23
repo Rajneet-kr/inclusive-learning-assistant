@@ -1,13 +1,16 @@
 "use client";
 
-import { AccessibilityProfile, AccessibilitySettings } from "@/types/api";
+import { AccessibilityProfile, AccessibilitySettings, SupportedLanguageCode } from "@/types/api";
 import { Eye, BookOpen, Ear, RotateCcw } from "lucide-react";
+import { LanguageSelector } from "./LanguageSelector";
 
 interface AccessibilityToolbarProps {
   settings: AccessibilitySettings;
   onProfileChange: (profile: AccessibilityProfile) => void;
   onUpdateSettings: (settings: Partial<AccessibilitySettings>) => void;
   onReset: () => void;
+  onLanguageChange?: (lang: SupportedLanguageCode) => void;
+  isTranslating?: boolean;
 }
 
 export function AccessibilityToolbar({
@@ -15,7 +18,18 @@ export function AccessibilityToolbar({
   onProfileChange,
   onUpdateSettings,
   onReset,
+  onLanguageChange,
+  isTranslating = false,
 }: AccessibilityToolbarProps) {
+  const currentLang = settings.language || "en";
+
+  const handleLanguageSelect = (lang: SupportedLanguageCode) => {
+    if (onLanguageChange) {
+      onLanguageChange(lang);
+    } else {
+      onUpdateSettings({ language: lang });
+    }
+  };
   return (
     <div
       role="region"
@@ -76,8 +90,16 @@ export function AccessibilityToolbar({
           </div>
         </div>
 
-        {/* Quick Toggles */}
-        <div className="flex items-center gap-3">
+        {/* Quick Toggles & Language Selector */}
+        <div className="flex flex-wrap items-center gap-3">
+          <LanguageSelector
+            currentLanguage={currentLang}
+            onLanguageChange={handleLanguageSelect}
+            isLoading={isTranslating}
+          />
+
+          <div className="h-5 w-px bg-slate-200 hidden sm:block" aria-hidden="true" />
+
           {settings.profile === "dyslexia" && (
             <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input

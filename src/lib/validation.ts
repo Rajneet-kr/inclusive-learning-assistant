@@ -36,3 +36,43 @@ export const PracticeRequestSchema = z.object({
   studyDays: z.number().default(5),
   minutesPerDay: z.number().default(20),
 });
+
+export const TranslateRequestSchema = z.object({
+  documentId: z.string().default("doc_live"),
+  chunkIds: z.array(z.string()).default([]),
+  targetLanguage: z.enum([
+    "en",
+    "hi",
+    "kn",
+    "ta",
+    "te",
+    "mr",
+    "bn",
+    "es",
+    "fr",
+    "de",
+  ]),
+  readingLevel: z.string().default("grade_6"),
+  preserveTechnicalTerms: z.boolean().default(true),
+  sections: z
+    .array(
+      z.object({
+        chunkId: z.string(),
+        title: z.string(),
+        simpleText: z.string(),
+        keyIdea: z.string(),
+        jargon: z
+          .array(
+            z.object({
+              term: z.string(),
+              originalTerm: z.string().optional(),
+              plainMeaning: z.string(),
+            })
+          )
+          .default([]),
+        readingTimeSeconds: z.number().optional(),
+      })
+    )
+    .default([]),
+});
+

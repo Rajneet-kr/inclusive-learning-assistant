@@ -1,0 +1,86 @@
+{
+  "documentId": "doc_bio_sample_01",
+  "targetLanguage": "es",
+  "sourceLanguage": "en",
+  "direction": "ltr",
+  "sections": [
+    {
+      "chunkId": "chunk_1",
+      "title": "¿Qué es la Fotosíntesis? (What is Photosynthesis?)",
+      "simpleText": "Las plantas producen su propio alimento utilizando luz solar, agua y aire. Este proceso ocurre dentro de pequeños compartimentos verdes llamados cloroplastos. Las plantas crean un azúcar dulce llamado glucosa y liberan oxígeno fresco para respirar.",
+      "keyIdea": "Las plantas usan la luz solar para fabricar alimento y oxígeno limpio.",
+      "jargon": [
+        {
+          "term": "Chloroplast (Cloroplasto)",
+          "originalTerm": "Chloroplast",
+          "plainMeaning": "La pequeña fábrica solar dentro de las hojas que captura la luz solar."
+        },
+        {
+          "term": "Glucose (Glucosa)",
+          "originalTerm": "Glucose",
+          "plainMeaning": "Un azúcar simple que da energía rápida a plantas y animales."
+        }
+      ],
+      "readingTimeSeconds": 15
+    },
+    {
+      "chunkId": "chunk_2",
+      "title": "Fase 1: Reacciones dependientes de la luz",
+      "simpleText": "La luz solar golpea las partes verdes de la hoja llamadas clorofila. La energía lumínica divide las gotas de agua en oxígeno. La hoja almacena esta energía capturada en pequeñas baterías moleculares llamadas ATP.",
+      "keyIdea": "La luz solar divide el agua para liberar oxígeno y cargar baterías celulares.",
+      "jargon": [
+        {
+          "term": "Chlorophyll (Clorofila)",
+          "originalTerm": "Chlorophyll",
+          "plainMeaning": "La sustancia verde en las plantas que absorbe la luz solar como un panel solar."
+        },
+        {
+          "term": "ATP",
+          "originalTerm": "ATP",
+          "plainMeaning": "Una batería molecular recargable que usan las células para trabajar."
+        },
+        {
+          "term": "Thylakoid (Tilacoide)",
+          "originalTerm": "Thylakoid",
+          "plainMeaning": "Sacos planos apilados dentro de los cloroplastos donde se recolecta energía solar."
+        }
+      ],
+      "readingTimeSeconds": 18
+    },
+    {
+      "chunkId": "chunk_3",
+      "title": "Fase 2: El Ciclo de Calvin",
+      "simpleText": "En esta etapa, la planta no necesita luz solar directa de inmediato. Toma dióxido de carbono del aire. Con la energía almacenada en las baterías, une las piezas de carbono para crear azúcar.",
+      "keyIdea": "La planta convierte el aire y la energía de las baterías en alimento dulce.",
+      "jargon": [
+        {
+          "term": "Calvin Cycle (Ciclo de Calvin)",
+          "originalTerm": "Calvin Cycle",
+          "plainMeaning": "El paso de cocina donde las plantas preparan azúcar sin necesitar luz solar directa."
+        },
+        {
+          "term": "Stroma (Estroma)",
+          "originalTerm": "Stroma",
+          "plainMeaning": "El líquido tibio que llena el espacio alrededor de los sacos solares."
+        }
+      ],
+      "readingTimeSeconds": 17
+    },
+    {
+      "chunkId": "chunk_4",
+      "title": "¿Por qué es importante la fotosíntesis?",
+      "simpleText": "Casi todos los seres vivos de la Tierra dependen de las plantas. Las plantas producen el oxígeno que respiramos a cada segundo. También proporcionan la energía inicial para toda la comida de nuestro planeta.",
+      "keyIdea": "Las plantas mantienen vivos a los animales proporcionando aire respirable y nutrición.",
+      "jargon": [
+        {
+          "term": "Biosphere (Biosfera)",
+          "originalTerm": "Biosphere",
+          "plainMeaning": "Todos los lugares de la Tierra donde viven animales, plantas y microorganismos."
+        }
+      ],
+      "readingTimeSeconds": 14
+    }
+  ],
+  "ttsVoiceAvailable": true,
+  "fallbackUsed": false
+}

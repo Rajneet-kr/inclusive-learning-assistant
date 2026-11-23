@@ -229,6 +229,8 @@ export interface AccessibilitySettings {
   highlightCurrentWord: boolean;
   captionsEnabled: boolean;
   captionsFontSize: number;
+  language?: SupportedLanguageCode;
+  focus?: Partial<FocusSettings>;
 }
 
 export const DEFAULT_ACCESSIBILITY_SETTINGS: AccessibilitySettings = {
@@ -246,4 +248,193 @@ export const DEFAULT_ACCESSIBILITY_SETTINGS: AccessibilitySettings = {
   highlightCurrentWord: true,
   captionsEnabled: false,
   captionsFontSize: 16,
+  language: "en",
 };
+
+// ==========================================
+// 8. Phase 4 Types: Multilingual, STEM, Focus, Tutor, Offline Pack
+// ==========================================
+
+export type SupportedLanguageCode =
+  | "en"
+  | "hi"
+  | "kn"
+  | "ta"
+  | "te"
+  | "mr"
+  | "bn"
+  | "es"
+  | "fr"
+  | "de";
+
+export type TextDirection = "ltr" | "rtl";
+
+export interface LanguageOption {
+  code: SupportedLanguageCode;
+  label: string;
+  nativeLabel: string;
+  direction: TextDirection;
+  ttsSupported: boolean;
+}
+
+export interface TranslatedSimplifiedSection {
+  chunkId: string;
+  title: string;
+  simpleText: string;
+  keyIdea: string;
+  jargon: Array<{
+    term: string;
+    originalTerm?: string;
+    plainMeaning: string;
+  }>;
+  readingTimeSeconds: number;
+}
+
+export interface TranslationResult {
+  documentId: string;
+  targetLanguage: SupportedLanguageCode;
+  sourceLanguage: SupportedLanguageCode;
+  direction: TextDirection;
+  sections: TranslatedSimplifiedSection[];
+  ttsVoiceAvailable: boolean;
+  fallbackUsed: boolean;
+}
+
+export type StemElementType =
+  | "equation"
+  | "graph"
+  | "table"
+  | "diagram"
+  | "circuit"
+  | "chemical_reaction"
+  | "text"
+  | "unknown";
+
+export interface StemElement {
+  id: string;
+  type: StemElementType;
+  rawText?: string;
+  latex?: string;
+  mathml?: string;
+  accessibleMathText: string;
+  description: string;
+  stepByStepExplanation: string[];
+  variables?: Array<{
+    symbol: string;
+    meaning: string;
+    unit?: string;
+  }>;
+  chart?: {
+    title?: string;
+    xAxis?: string;
+    yAxis?: string;
+    series?: Array<{
+      label: string;
+      trend: string;
+      notablePoints?: string[];
+    }>;
+  };
+  confidence: "high" | "medium" | "low";
+  sourceRegion?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+export interface StemVerbalizerResult {
+  documentId?: string;
+  elements: StemElement[];
+  overallExplanation: string;
+  keyTakeaways: string[];
+  warnings: string[];
+  fallbackUsed: boolean;
+}
+
+export type FocusToolMode =
+  | "off"
+  | "ruler"
+  | "line_focus"
+  | "distraction_free";
+
+export interface FocusSettings {
+  mode: FocusToolMode;
+  rulerHeightPx: number;
+  rulerOpacity: number;
+  visibleLines: 1 | 2 | 3;
+  syllableBreakdown: boolean;
+  microSprintMinutes: 5 | 10 | 15 | 25;
+  microSprintActive: boolean;
+  reduceMotion: boolean;
+}
+
+export interface FocusSession {
+  id: string;
+  documentId?: string;
+  startedAt: string;
+  plannedMinutes: number;
+  completedMinutes: number;
+  completedChunkIds: string[];
+  status: "active" | "completed" | "cancelled";
+}
+
+export interface TutorCitation {
+  chunkId?: string;
+  transcriptSegmentId?: number;
+  startSeconds?: number;
+  endSeconds?: number;
+  quotedEvidence: string;
+}
+
+export interface TutorAnswer {
+  answerId: string;
+  question: string;
+  answer: string;
+  simplifiedAnswer: string;
+  confidence: "high" | "medium" | "low" | "insufficient_evidence";
+  citations: TutorCitation[];
+  followUpQuestions: string[];
+  fallbackUsed: boolean;
+}
+
+export interface GlossaryTerm {
+  term: string;
+  plainMeaning: string;
+  language: SupportedLanguageCode;
+  source: "document" | "live_caption" | "user_saved";
+  firstSeenAt?: string;
+  documentId?: string;
+}
+
+export interface OfflineStudyPack {
+  documentId: string;
+  title: string;
+  generatedAt: string;
+  language: SupportedLanguageCode;
+  simplifiedSections: TranslatedSimplifiedSection[];
+  glossary: GlossaryTerm[];
+  transcript?: {
+    format: "vtt";
+    content: string;
+  };
+  flashcards: Array<{
+    id: string;
+    front: string;
+    back: string;
+    concept?: string;
+  }>;
+  quiz: Array<{
+    id: string;
+    question: string;
+    options: string[];
+    correctIndex: number;
+    explanation: string;
+  }>;
+  studyPlan: Array<{
+    day: number;
+    title: string;
+    tasks: string[];
+    estimatedMinutes: number;
+  }>;
+}

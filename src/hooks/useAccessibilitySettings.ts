@@ -97,11 +97,19 @@ export function useAccessibilitySettings() {
     }
   }, []);
 
+  const setLanguage = useCallback(
+    (language: import("@/types/api").SupportedLanguageCode) => {
+      updateSettings({ language });
+    },
+    [updateSettings]
+  );
+
   return {
     settings,
     isLoaded,
     updateSettings,
     setProfile,
+    setLanguage,
     resetSettings,
   };
 }

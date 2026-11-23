@@ -1,12 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { SimplifiedSection, AccessibilitySettings } from "@/types/api";
-import { BookOpen, HelpCircle } from "lucide-react";
+import {
+  SimplifiedSection,
+  TranslatedSimplifiedSection,
+  AccessibilitySettings,
+  SupportedLanguageCode,
+  TextDirection,
+} from "@/types/api";
+import { BookOpen, HelpCircle, VolumeX, Globe } from "lucide-react";
+import { getLanguageOption, getTextDirection, checkBrowserTtsVoiceAvailable } from "@/lib/i18n";
+
+type AnySection = SimplifiedSection | TranslatedSimplifiedSection;
 
 interface DyslexiaReaderProps {
-  sections: SimplifiedSection[];
+  sections: AnySection[];
   settings: AccessibilitySettings;
+  language?: SupportedLanguageCode;
+  direction?: TextDirection;
 }
 
 // Client-side Bionic Reading helper: bold the first 40-50% of each word
@@ -32,7 +43,37 @@ function renderBionicText(text: string) {
   });
 }
 
-export function DyslexiaReader({ sections, settings }: DyslexiaReaderProps) {
+export function DyslexiaReader({
+  sections,
+  settings,
+  language = "en",
+  direction,
+}: DyslexiaReaderProps) {
+  const currentLang = language || settings.language || "en";
+  const currentDir = direction || getTextDirection(currentLang);
+  const langOption = getLanguageOption(currentLang);
+
+  // Check if browser has speech synthesis voice for this language
+  const [hasTtsVoice, setHasTtsVoice] = React.useState(true);
+
+  React.useEffect(() => {
+    if (currentLang === "en") {
+      setHasTtsVoice(true);
+      return;
+    }
+
+    const checkVoice = () => {
+      const available = checkBrowserTtsVoiceAvailable(currentLang);
+      setHasTtsVoice(available);
+    };
+
+    checkVoice();
+
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.onvoiceschanged = checkVoice;
+    }
+  }, [currentLang]);
+
   const overlayClass = {
     none: "bg-white",
     cream: "overlay-cream",
@@ -44,25 +85,52 @@ export function DyslexiaReader({ sections, settings }: DyslexiaReaderProps) {
 
   return (
     <div
+      dir={currentDir}
       className={`rounded-2xl p-6 transition-colors ${overlayClass}`}
       style={{
-        fontFamily: settings.fontFamily === "opendyslexic" ? "OpenDyslexic, sans-serif" : "inherit",
+        fontFamily:
+          settings.fontFamily === "opendyslexic"
+            ? "OpenDyslexic, sans-serif"
+            : "inherit",
         fontSize: `${settings.fontSize}px`,
         lineHeight: settings.lineSpacing,
         letterSpacing: `${settings.letterSpacing}em`,
       }}
     >
-      <div className="flex items-center justify-between pb-4 border-b border-black/10 mb-6">
+      <div className="flex flex-wrap items-center justify-between pb-4 border-b border-black/10 mb-6 gap-2">
         <div className="flex items-center gap-2">
           <BookOpen className="w-5 h-5 text-amber-700" />
           <h2 className="text-xl font-bold tracking-tight text-amber-950">
             Dyslexia-Optimized Reading View
           </h2>
         </div>
-        <span className="text-xs px-2.5 py-1 rounded-full bg-amber-200/60 font-semibold text-amber-900">
-          OpenDyslexic &bull; Short Chunks &bull; Calming Pastel
-        </span>
+        <div className="flex items-center gap-2">
+          {currentLang !== "en" && (
+            <span className="text-xs px-2.5 py-1 rounded-full bg-blue-100 text-blue-900 font-semibold inline-flex items-center gap-1">
+              <Globe className="w-3 h-3 text-blue-600" />
+              {langOption.nativeLabel} ({langOption.label})
+            </span>
+          )}
+          <span className="text-xs px-2.5 py-1 rounded-full bg-amber-200/60 font-semibold text-amber-900">
+            OpenDyslexic &bull; Short Chunks &bull; Calming Pastel
+          </span>
+        </div>
       </div>
+
+      {/* Nonblocking notice if browser TTS lacks voice for target language */}
+      {!hasTtsVoice && currentLang !== "en" && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-5 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center gap-2"
+        >
+          <VolumeX className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>
+            <strong>Note on Read Aloud:</strong> Your browser does not currently have an offline speech voice installed for{" "}
+            <strong>{langOption.nativeLabel} ({langOption.label})</strong>. Text display and vocabulary work fully; read-aloud playback may fall back to your default system voice.
+          </span>
+        </div>
+      )}
 
       <div className="space-y-6">
         {sections.map((section, idx) => (
@@ -98,15 +166,25 @@ export function DyslexiaReader({ sections, settings }: DyslexiaReaderProps) {
                   Friendly Word Explanations:
                 </span>
                 <div className="flex flex-wrap gap-2">
-                  {section.jargon.map((j, jIdx) => (
-                    <span
-                      key={jIdx}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white border border-slate-300 text-xs text-slate-800"
-                    >
-                      <HelpCircle className="w-3.5 h-3.5 text-blue-600" />
-                      <strong>{j.term}:</strong> {j.plainMeaning}
-                    </span>
-                  ))}
+                  {section.jargon.map((j, jIdx) => {
+                    const original = "originalTerm" in j ? j.originalTerm : undefined;
+                    return (
+                      <span
+                        key={jIdx}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white border border-slate-300 text-xs text-slate-800"
+                      >
+                        <HelpCircle className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span>
+                          <strong>
+                            {j.term}
+                            {original && original !== j.term ? ` (${original})` : ""}
+                            :
+                          </strong>{" "}
+                          {j.plainMeaning}
+                        </span>
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             )}
