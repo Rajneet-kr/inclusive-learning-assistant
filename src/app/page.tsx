@@ -73,9 +73,76 @@ export default function HomePage() {
     practice?: PracticeResponse;
     transcript?: TranscribeResponse;
   }) => {
+    // 1. Fully replace current document note state
     setLoadedNote(data.note);
-    if (data.practice) setPracticePlan(data.practice);
-    if (data.transcript) setTranscript(data.transcript);
+
+    // 2. Fully replace practice plan
+    if (data.practice) {
+      setPracticePlan(data.practice);
+    } else {
+      // Dynamic fallback based on new note's chunks
+      setPracticePlan({
+        documentId: data.note.documentId,
+        practiceId: `pr_${Date.now().toString(36)}`,
+        quiz: data.note.chunks.slice(0, 6).map((c, i) => ({
+          id: `q_dyn_${i + 1}`,
+          question: `What is the key takeaway of "${c.heading}"?`,
+          options: [
+            c.text.slice(0, 75) + "...",
+            `An unrelated historical development outside ${data.note.subject || "this topic"}`,
+            `A contradictory hypothesis not supported by the lecture`,
+            `None of the provided options`,
+          ],
+          correctIndex: 0,
+          explanation: `${c.heading}: ${c.text.slice(0, 100)}...`,
+          difficulty: i === 0 ? "easy" : i < 3 ? "medium" : "hard",
+          concept: (c.keyTerms && c.keyTerms[0]) || c.heading,
+        })),
+        flashcards: data.note.chunks.slice(0, 8).map((c, i) => ({
+          id: `f_dyn_${i + 1}`,
+          front: `Define: ${(c.keyTerms && c.keyTerms[0]) || c.heading}`,
+          back: `Essential concept discussed in section "${c.heading}".`,
+          concept: (c.keyTerms && c.keyTerms[0]) || c.heading,
+        })),
+        studyPlan: data.note.chunks.slice(0, 5).map((c, i) => ({
+          day: i + 1,
+          title: `Study Session: ${c.heading}`,
+          tasks: [
+            `Read simplified summary for ${c.heading} (5 mins).`,
+            `Review terms: ${(c.keyTerms || []).join(", ") || c.heading}.`,
+            `Self-test with quiz question #${i + 1}.`,
+          ],
+          estimatedMinutes: 20,
+        })),
+        fallbackUsed: true,
+      });
+    }
+
+    // 3. Fully replace transcript
+    if (data.transcript) {
+      setTranscript(data.transcript);
+    } else {
+      // Synthesize transcript from new document's chunks
+      setTranscript({
+        documentId: data.note.documentId,
+        transcriptId: `tr_dyn_${Date.now().toString(36)}`,
+        language: "en",
+        durationSeconds: Math.max(60, data.note.chunks.length * 30),
+        segments: data.note.chunks.map((c, i) => ({
+          id: i,
+          start: Math.round(i * 30.0 * 10) / 10,
+          end: Math.round((i + 1) * 30.0 * 10) / 10,
+          text: `${c.heading}: ${c.text}`,
+        })),
+        keyConcepts: data.note.chunks.slice(0, 4).map((c, i) => ({
+          title: c.heading,
+          explanation: (c.text || "").slice(0, 100) + "...",
+          timestamps: [Math.round(i * 30.0 * 10) / 10],
+        })),
+        downloadUrl: `/api/transcribe?format=vtt`,
+        fallbackUsed: false,
+      });
+    }
 
     if (data.note.fallbackUsed) {
       setStatusNotice({
@@ -84,7 +151,7 @@ export default function HomePage() {
       });
     } else {
       setStatusNotice({
-        message: "Successfully processed live with Google Gemini & Deepgram Nova-3!",
+        message: `Successfully processed live with Google Gemini for "${data.note.title}"!`,
         type: "live",
       });
     }

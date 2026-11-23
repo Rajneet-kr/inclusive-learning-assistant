@@ -6,7 +6,39 @@ import { sampleBiologyNote } from "@/lib/sampleData";
 
 export const maxDuration = 60;
 
+function createDynamicSimplifiedSections(chunks: any[], subject = "Study Material"): SimplifiedSection[] {
+  return chunks.map((c: any, idx: number) => {
+    const rawText = c.text || "";
+    const sentences = rawText.split(/(?<=[.?!])\s+/).filter(Boolean);
+    const simpleText = sentences.slice(0, 3).join(" ") || rawText.slice(0, 180) || "Summary content.";
+    const keyIdea = sentences[0] || c.heading || "Key concept summary.";
+    
+    const terms = Array.isArray(c.keyTerms) && c.keyTerms.length > 0
+      ? c.keyTerms.slice(0, 3)
+      : [c.heading || `Topic ${idx + 1}`];
+
+    const jargon = terms.map((term: string) => ({
+      term,
+      plainMeaning: `Core subject concept in ${c.heading || subject}: ${term}`,
+    }));
+
+    const wordCount = simpleText.split(/\s+/).filter(Boolean).length;
+    return {
+      chunkId: c.id || `chunk_${idx + 1}`,
+      title: c.heading || `Section ${idx + 1}`,
+      simpleText,
+      keyIdea,
+      jargon,
+      readingTimeSeconds: Math.max(10, Math.ceil(wordCount / 2.5)),
+    };
+  });
+}
+
 export async function POST(request: NextRequest) {
+  let requestChunks: any[] = [];
+  let reqDocumentId = "doc_live";
+  let reqSubject = "General";
+
   try {
     const body = await request.json();
     const {
@@ -18,22 +50,33 @@ export async function POST(request: NextRequest) {
       language = "en",
       sourceText = "",
       chunks = [],
+      subject = "General",
     } = body;
 
-    // Build the user context prompt as specified in ARCHITECTURE.md line 445
-    const textToSimplify =
-      sourceText ||
-      (Array.isArray(chunks) && chunks.length > 0
-        ? chunks.map((c: any) => `Heading: ${c.heading}\n${c.text}`).join("\n\n")
-        : sampleBiologyNote.extractedText);
+    reqDocumentId = documentId;
+    requestChunks = Array.isArray(chunks) ? chunks : [];
+    reqSubject = subject;
+
+    // Build concise, structured input from chunks for faster Gemini processing
+    let textToSimplify = "";
+    if (requestChunks.length > 0) {
+      textToSimplify = requestChunks
+        .map((c, i) => `[Chunk ${i + 1}] Heading: ${c.heading}\nText: ${c.text}\nKey Terms: ${(c.keyTerms || []).join(", ")}`)
+        .join("\n\n");
+    } else if (sourceText) {
+      textToSimplify = sourceText.slice(0, 4000);
+    } else {
+      textToSimplify = sampleBiologyNote.extractedText;
+    }
 
     const userPrompt = `
 User context:
 Reading level: ${readingLevel}
 Maximum words per chunk: ${maxWordsPerChunk}
 Language: ${language}
+Subject: ${subject}
 
-Source material:
+Source material to simplify into chunks:
 ${textToSimplify}
 `;
 
@@ -47,43 +90,33 @@ ${textToSimplify}
       const cleanJson = responseText.replace(/```json\n?|\n?```/g, "").trim();
       const parsed = JSON.parse(cleanJson);
 
-      const sections: SimplifiedSection[] = Array.isArray(parsed.sections)
-        ? parsed.sections.map((s: any, idx: number) => ({
-            chunkId: s.chunkId || `chunk_${idx + 1}`,
-            title: s.title || `Section ${idx + 1}`,
-            simpleText: s.simpleText || "",
-            keyIdea: s.keyIdea || "Key summary idea.",
-            jargon: Array.isArray(s.jargon) ? s.jargon : [],
-            readingTimeSeconds:
-              typeof s.readingTimeSeconds === "number"
-                ? s.readingTimeSeconds
-                : Math.max(10, Math.ceil((s.simpleText || "").split(" ").length / 2.5)),
-          }))
-        : sampleBiologyNote.simplifiedSections;
+      if (Array.isArray(parsed.sections) && parsed.sections.length > 0) {
+        const sections: SimplifiedSection[] = parsed.sections.map((s: any, idx: number) => ({
+          chunkId: s.chunkId || (requestChunks[idx]?.id) || `chunk_${idx + 1}`,
+          title: s.title || (requestChunks[idx]?.heading) || `Section ${idx + 1}`,
+          simpleText: s.simpleText || "",
+          keyIdea: s.keyIdea || "Key summary idea.",
+          jargon: Array.isArray(s.jargon) ? s.jargon : [],
+          readingTimeSeconds:
+            typeof s.readingTimeSeconds === "number"
+              ? s.readingTimeSeconds
+              : Math.max(10, Math.ceil((s.simpleText || "").split(" ").length / 2.5)),
+        }));
 
-      return {
-        documentId,
-        sections,
-        fallbackUsed: false,
-      };
+        return {
+          documentId,
+          sections,
+          fallbackUsed: false,
+        };
+      }
+
+      // If AI returned empty sections array, use dynamic fallback
+      return fallbackGenerator();
     };
 
     const fallbackGenerator = (): SimplifyResponse => {
-      // Deterministic fallback using sample or rule-based chunks
-      if (Array.isArray(chunks) && chunks.length > 0) {
-        const sections: SimplifiedSection[] = chunks.map((c: any, idx: number) => ({
-          chunkId: c.id || `chunk_${idx + 1}`,
-          title: c.heading || `Part ${idx + 1}`,
-          simpleText: c.text
-            ? c.text.slice(0, 200) + "..."
-            : "Simplified content will appear here.",
-          keyIdea: c.heading || "Key concept",
-          jargon: (c.keyTerms || []).map((term: string) => ({
-            term,
-            plainMeaning: `Core subject term: ${term}`,
-          })),
-          readingTimeSeconds: 15,
-        }));
+      if (requestChunks.length > 0) {
+        const sections = createDynamicSimplifiedSections(requestChunks, subject);
         return { documentId, sections, fallbackUsed: true };
       }
 
@@ -94,17 +127,25 @@ ${textToSimplify}
       };
     };
 
-    const result = await withTimeoutFallback(primaryAI, fallbackGenerator, 12000);
+    const result = await withTimeoutFallback(primaryAI, fallbackGenerator, 14000);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Error in /api/simplify:", error);
-    return NextResponse.json(
-      {
-        documentId: "doc_error",
-        sections: sampleBiologyNote.simplifiedSections,
+    
+    // Fallback directly from request chunks so user never sees stale Biology data
+    if (requestChunks.length > 0) {
+      const sections = createDynamicSimplifiedSections(requestChunks, reqSubject);
+      return NextResponse.json({
+        documentId: reqDocumentId,
+        sections,
         fallbackUsed: true,
-      },
-      { status: 200 }
-    );
+      });
+    }
+
+    return NextResponse.json({
+      documentId: reqDocumentId,
+      sections: sampleBiologyNote.simplifiedSections,
+      fallbackUsed: true,
+    });
   }
 }

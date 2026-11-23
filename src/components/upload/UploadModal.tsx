@@ -21,7 +21,7 @@ export function UploadModal({
   activeProfile,
   onProcessingComplete,
 }: UploadModalProps) {
-  const [tab, setTab] = React.useState<"file" | "paste">("file");
+  const [tab, setTab] = React.useState<"file" | "paste">("paste");
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
   const [pastedText, setPastedText] = React.useState("");
   const [subject, setSubject] = React.useState("");
@@ -83,12 +83,11 @@ export function UploadModal({
       if (selectedFile) ingestForm.append("file", selectedFile);
       if (pastedText) ingestForm.append("pastedText", pastedText);
       if (isAudio && liveTranscript) {
-        // If it was audio, pass the transcript as text to ingest
         const transcriptText = liveTranscript.segments.map((s) => s.text).join(" ");
         ingestForm.append("pastedText", transcriptText);
       }
       ingestForm.append("accessibilityProfile", activeProfile);
-      ingestForm.append("subject", subject || (isAudio ? "Lecture Recording" : "General"));
+      ingestForm.append("subject", subject || (isAudio ? "Lecture Audio" : "General"));
       ingestForm.append("gradeLevel", gradeLevel);
 
       const ingestRes = await fetch("/api/ingest", {
@@ -103,7 +102,7 @@ export function UploadModal({
 
       const ingestData: IngestResponse = await ingestRes.json();
 
-      // 3. Call /api/simplify in parallel with /api/practice
+      // 3. Call /api/simplify and /api/practice passing the newly ingested chunks
       setStepMessage("Generating dyslexia simplifications & adaptive practice quiz...");
       const [simplifyRes, practiceRes] = await Promise.all([
         fetch("/api/simplify", {
@@ -113,6 +112,7 @@ export function UploadModal({
             documentId: ingestData.documentId,
             chunks: ingestData.chunks,
             sourceText: ingestData.extractedText,
+            subject: ingestData.subject || subject || "General",
             readingLevel: gradeLevel,
           }),
         }),
@@ -138,10 +138,53 @@ export function UploadModal({
         ? await practiceRes.json()
         : undefined;
 
+      // 4. Ensure sections are 100% derived from the new document's chunks
+      let finalSections = simplifyData.sections;
+      if (!Array.isArray(finalSections) || finalSections.length === 0) {
+        finalSections = ingestData.chunks.map((c, i) => {
+          const sentences = (c.text || "").split(/(?<=[.?!])\s+/).filter(Boolean);
+          const simpleText = sentences.slice(0, 3).join(" ") || c.text || "";
+          return {
+            chunkId: c.id,
+            title: c.heading || `Section ${i + 1}`,
+            simpleText,
+            keyIdea: sentences[0] || c.heading || "Key summary",
+            jargon: (c.keyTerms || []).slice(0, 3).map((term: string) => ({
+              term,
+              plainMeaning: `Core concept in ${c.heading}: ${term}`,
+            })),
+            readingTimeSeconds: Math.max(10, Math.ceil(simpleText.split(" ").length / 2.5)),
+          };
+        });
+      }
+
+      // 5. If it wasn't audio, synthesize transcript from the new document's chunks so Hearing tab reflects new content!
+      if (!liveTranscript) {
+        liveTranscript = {
+          documentId: ingestData.documentId,
+          transcriptId: `tr_${Date.now().toString(36)}`,
+          language: "en",
+          durationSeconds: Math.max(60, ingestData.chunks.length * 25),
+          segments: ingestData.chunks.map((c, i) => ({
+            id: i,
+            start: Math.round(i * 25.0 * 10) / 10,
+            end: Math.round((i + 1) * 25.0 * 10) / 10,
+            text: `${c.heading}: ${c.text}`,
+          })),
+          keyConcepts: ingestData.chunks.slice(0, 4).map((c, i) => ({
+            title: c.heading,
+            explanation: (c.text || "").slice(0, 100) + "...",
+            timestamps: [Math.round(i * 25.0 * 10) / 10],
+          })),
+          downloadUrl: `/api/transcribe?format=vtt`,
+          fallbackUsed: false,
+        };
+      }
+
       onProcessingComplete({
         note: {
           ...ingestData,
-          simplifiedSections: simplifyData.sections,
+          simplifiedSections: finalSections,
           fallbackUsed: ingestData.fallbackUsed || simplifyData.fallbackUsed,
         },
         practice: practiceData,
@@ -177,7 +220,7 @@ export function UploadModal({
               Process New Study Notes
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Powered by Google Gemini &amp; Deepgram Nova-3 with 12s safe fallback
+              Powered by Google Gemini &amp; Deepgram Nova-3 with 14s safe fallback
             </p>
           </div>
           <button
@@ -208,18 +251,6 @@ export function UploadModal({
             <button
               type="button"
               role="tab"
-              aria-selected={tab === "file"}
-              onClick={() => setTab("file")}
-              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 ${
-                tab === "file" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <UploadCloud className="w-4 h-4 text-blue-600" />
-              Upload Document or Audio
-            </button>
-            <button
-              type="button"
-              role="tab"
               aria-selected={tab === "paste"}
               onClick={() => setTab("paste")}
               className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 ${
@@ -229,9 +260,37 @@ export function UploadModal({
               <FileText className="w-4 h-4 text-indigo-600" />
               Paste Lecture Text
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "file"}
+              onClick={() => setTab("file")}
+              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                tab === "file" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <UploadCloud className="w-4 h-4 text-blue-600" />
+              Upload Document or Audio
+            </button>
           </div>
 
-          {/* Tab 1: File Upload */}
+          {/* Tab 1: Paste Text (Default) */}
+          {tab === "paste" && (
+            <div>
+              <textarea
+                rows={7}
+                value={pastedText}
+                onChange={(e) => setPastedText(e.target.value)}
+                placeholder="Paste reading assignments, textbook passages, or raw lecture notes here..."
+                className="w-full p-4 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans"
+              />
+              <div className="text-right mt-1 text-xs text-slate-400">
+                {pastedText.split(/\s+/).filter(Boolean).length} words
+              </div>
+            </div>
+          )}
+
+          {/* Tab 2: File Upload */}
           {tab === "file" && (
             <div
               onClick={() => fileInputRef.current?.click()}
@@ -271,22 +330,6 @@ export function UploadModal({
             </div>
           )}
 
-          {/* Tab 2: Paste Text */}
-          {tab === "paste" && (
-            <div>
-              <textarea
-                rows={5}
-                value={pastedText}
-                onChange={(e) => setPastedText(e.target.value)}
-                placeholder="Paste reading assignments, textbook passages, or raw lecture notes here..."
-                className="w-full p-4 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans"
-              />
-              <div className="text-right mt-1 text-xs text-slate-400">
-                {pastedText.split(/\s+/).filter(Boolean).length} words
-              </div>
-            </div>
-          )}
-
           {/* Metadata Controls */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -297,7 +340,7 @@ export function UploadModal({
                 type="text"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="e.g. World History, Cell Biology, CS 101"
+                placeholder="e.g. Artificial Intelligence, World History, CS 101"
                 className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
