@@ -1,0 +1,122 @@
+{
+  "documentId": "doc_bio_sample_01",
+  "transcriptId": "tr_bio_sample_01",
+  "language": "en",
+  "durationSeconds": 180,
+  "segments": [
+    {
+      "id": 0,
+      "start": 0.0,
+      "end": 6.8,
+      "text": "Good morning class! Today we are exploring the marvelous engine of life on Earth: photosynthesis."
+    },
+    {
+      "id": 1,
+      "start": 7.2,
+      "end": 15.4,
+      "text": "Think of a single green leaf as an ultra-efficient solar panel factory that manufactures food directly out of thin air and water."
+    },
+    {
+      "id": 2,
+      "start": 16.0,
+      "end": 24.5,
+      "text": "Inside every cell of that leaf are microscopic green organelles known as chloroplasts. That's where the magic unfolds."
+    },
+    {
+      "id": 3,
+      "start": 25.1,
+      "end": 35.0,
+      "text": "Now, the overall reaction requires three primary ingredients: sunlight photons, water absorbed by roots, and carbon dioxide inhaled through stomata."
+    },
+    {
+      "id": 4,
+      "start": 35.8,
+      "end": 47.2,
+      "text": "Stage one is known as the light-dependent reaction. Here, green chlorophyll molecules nestled within thylakoid discs absorb light packets."
+    },
+    {
+      "id": 5,
+      "start": 48.0,
+      "end": 58.6,
+      "text": "That incoming light energy is so intense it literally tears water molecules in two—a process we scientists call photolysis."
+    },
+    {
+      "id": 6,
+      "start": 59.2,
+      "end": 70.5,
+      "text": "The oxygen atoms combine to create O2 gas which diffuses out of the leaf. That's the very air filling your lungs right now!"
+    },
+    {
+      "id": 7,
+      "start": 71.0,
+      "end": 83.4,
+      "text": "Meanwhile, the excited electrons recharge two vital chemical batteries: adenosine triphosphate, or ATP, and NADPH."
+    },
+    {
+      "id": 8,
+      "start": 84.0,
+      "end": 96.0,
+      "text": "Now we move to stage two: the light-independent phase, commonly called the Calvin cycle, taking place in the liquid stroma."
+    },
+    {
+      "id": 9,
+      "start": 96.8,
+      "end": 109.5,
+      "text": "Even if the sun sets, this cycle keeps turning as long as stored ATP batteries remain. The key enzyme RuBisCO traps carbon dioxide."
+    },
+    {
+      "id": 10,
+      "start": 110.2,
+      "end": 123.8,
+      "text": "Through a series of enzymatic steps, the trapped carbon atoms are bonded together to form glucose—a stable high-energy sugar."
+    },
+    {
+      "id": 11,
+      "start": 124.5,
+      "end": 138.0,
+      "text": "Plants use this glucose to build cellulose stems, synthesize starches for storage, and power their own cellular respiration."
+    },
+    {
+      "id": 12,
+      "start": 138.8,
+      "end": 152.0,
+      "text": "And when herbivores consume these leaves, they absorb that solar energy secondhand, passing it all the way up the trophic pyramid."
+    },
+    {
+      "id": 13,
+      "start": 152.8,
+      "end": 166.4,
+      "text": "So remember the golden summary: Sunlight plus Water plus Carbon Dioxide yields Glucose and Oxygen."
+    },
+    {
+      "id": 14,
+      "start": 167.0,
+      "end": 180.0,
+      "text": "Tomorrow, we will contrast this with mitochondrial respiration. Please review the key terms in your study guide tonight!"
+    }
+  ],
+  "keyConcepts": [
+    {
+      "title": "Chloroplasts as Solar Factories",
+      "explanation": "Plant cells contain chloroplasts that house chlorophyll pigments to capture solar radiation.",
+      "timestamps": [16.0, 35.8]
+    },
+    {
+      "title": "Light Reactions & Water Splitting",
+      "explanation": "Sunlight splits water (photolysis), releasing oxygen gas and charging ATP and NADPH energy carriers.",
+      "timestamps": [35.8, 83.4]
+    },
+    {
+      "title": "Calvin Cycle & Glucose Synthesis",
+      "explanation": "RuBisCO fixes carbon dioxide in the stroma, using ATP energy to construct stable glucose sugars.",
+      "timestamps": [84.0, 123.8]
+    },
+    {
+      "title": "Ecological Foundation of Biosphere",
+      "explanation": "Photosynthesis provides the base food energy and atmospheric oxygen required by almost all terrestrial life.",
+      "timestamps": [124.5, 180.0]
+    }
+  ],
+  "downloadUrl": "/samples/lecture-transcript.json",
+  "fallbackUsed": true
+}

@@ -1,0 +1,112 @@
+{
+  "documentId": "doc_bio_sample_01",
+  "status": "ready",
+  "inputKind": "pdf",
+  "title": "Photosynthesis & Cellular Energy",
+  "subject": "Biology",
+  "gradeLevel": "Grade 10",
+  "sourceSummary": "Comprehensive lecture notes detailing how green plants convert solar light energy into chemical glucose, highlighting chlorophyll, light reactions, and the Calvin cycle.",
+  "extractedText": "Photosynthesis is the biochemical process by which photoautotrophic organisms convert light energy into chemical energy stored in glucose. The process takes place inside chloroplasts and comprises two distinct stages: light-dependent reactions in thylakoid membranes and light-independent reactions (Calvin cycle) in the stroma. During the light reactions, chlorophyll pigments absorb sunlight photons, exciting electrons and splitting water molecules (photolysis) to release oxygen gas while producing ATP and NADPH. In the Calvin cycle, the enzyme RuBisCO facilitates carbon fixation, using ATP and NADPH to transform carbon dioxide into carbohydrates. These carbohydrates supply cellular respiration with the substrates needed to generate cellular energy.",
+  "chunks": [
+    {
+      "id": "chunk_1",
+      "index": 0,
+      "heading": "What is Photosynthesis?",
+      "text": "Photosynthesis is the biochemical process by which plants convert sunlight into chemical energy. It happens inside chloroplasts found in plant leaves. Plants absorb carbon dioxide, water, and sunlight to create glucose sugar and release oxygen into the atmosphere.",
+      "keyTerms": ["photosynthesis", "chloroplast", "glucose", "chemical energy"]
+    },
+    {
+      "id": "chunk_2",
+      "index": 1,
+      "heading": "Stage 1: Light-Dependent Reactions",
+      "text": "The first stage requires direct sunlight and takes place inside folded membrane sacks called thylakoids. Green pigment molecules called chlorophyll absorb sunlight photons. This excites electrons and splits water molecules, producing oxygen gas alongside energy carriers ATP and NADPH.",
+      "keyTerms": ["chlorophyll", "thylakoid", "photolysis", "ATP", "NADPH"]
+    },
+    {
+      "id": "chunk_3",
+      "index": 2,
+      "heading": "Stage 2: The Calvin Cycle (Light-Independent)",
+      "text": "The second stage occurs in the liquid fluid of the chloroplast called the stroma. It does not require direct light. The enzyme RuBisCO captures carbon dioxide from the air and uses the energy stored in ATP and NADPH to assemble glucose molecules.",
+      "keyTerms": ["Calvin cycle", "stroma", "RuBisCO", "carbon fixation"]
+    },
+    {
+      "id": "chunk_4",
+      "index": 3,
+      "heading": "Why Photosynthesis Matters for Life",
+      "text": "Photosynthesis is the primary engine for Earth's biosphere. It generates the oxygen that animals and humans breathe and provides the base food source for almost every food chain. Without it, aerobic life on Earth could not exist.",
+      "keyTerms": ["biosphere", "oxygen", "food chain", "cellular respiration"]
+    }
+  ],
+  "simplifiedSections": [
+    {
+      "chunkId": "chunk_1",
+      "title": "What is Photosynthesis?",
+      "simpleText": "Plants make their own food using sunlight, water, and air. This process takes place inside tiny green compartments called chloroplasts. Plants make sweet sugar called glucose and release fresh oxygen for us to breathe.",
+      "keyIdea": "Plants use sunlight to make food and clean oxygen.",
+      "jargon": [
+        {
+          "term": "Chloroplast",
+          "plainMeaning": "The tiny solar factory inside plant leaves that captures sunlight."
+        },
+        {
+          "term": "Glucose",
+          "plainMeaning": "A simple sugar that gives plants and animals quick energy."
+        }
+      ],
+      "readingTimeSeconds": 15
+    },
+    {
+      "chunkId": "chunk_2",
+      "title": "Stage 1: Light-Dependent Reactions",
+      "simpleText": "Sunlight hits green parts in the leaf called chlorophyll. The light energy splits water droplets into oxygen. The leaf stores this trapped power in tiny battery molecules called ATP.",
+      "keyIdea": "Sunlight splits water to release oxygen and recharge cellular batteries.",
+      "jargon": [
+        {
+          "term": "Chlorophyll",
+          "plainMeaning": "The green substance in plants that traps sunlight like a solar panel."
+        },
+        {
+          "term": "ATP",
+          "plainMeaning": "A rechargeable molecular battery cells use to do work."
+        },
+        {
+          "term": "Thylakoid",
+          "plainMeaning": "Flat stacked bags inside chloroplasts where solar energy is collected."
+        }
+      ],
+      "readingTimeSeconds": 18
+    },
+    {
+      "chunkId": "chunk_3",
+      "title": "Stage 2: The Calvin Cycle",
+      "simpleText": "In this stage, the plant does not need sunlight right away. It takes carbon dioxide gas from the air. Using the stored battery power, it glues the carbon pieces together to make sugar.",
+      "keyIdea": "The plant turns air and battery energy into sweet food.",
+      "jargon": [
+        {
+          "term": "Calvin Cycle",
+          "plainMeaning": "The kitchen step where plants cook sugar without needing direct sunlight."
+        },
+        {
+          "term": "Stroma",
+          "plainMeaning": "The warm syrup-like fluid filling the space around the solar stacks."
+        }
+      ],
+      "readingTimeSeconds": 17
+    },
+    {
+      "chunkId": "chunk_4",
+      "title": "Why Photosynthesis Matters",
+      "simpleText": "Nearly every living creature on Earth relies on plants. Plants produce the oxygen we breathe every second. They also provide the starting energy for all food on our planet.",
+      "keyIdea": "Plants keep animals alive by supplying breathable air and nourishment.",
+      "jargon": [
+        {
+          "term": "Biosphere",
+          "plainMeaning": "Every place on Earth where animals, plants, and microbes live."
+        }
+      ],
+      "readingTimeSeconds": 14
+    }
+  ],
+  "warnings": [],
+  "fallbackUsed": true
+}

@@ -1,0 +1,183 @@
+{
+  "documentId": "doc_bio_sample_01",
+  "practiceId": "pr_bio_sample_01",
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "What primary gas is released into the atmosphere as a byproduct of water photolysis during photosynthesis?",
+      "options": ["Oxygen (O2)", "Carbon dioxide (CO2)", "Nitrogen (N2)", "Methane (CH4)"],
+      "correctIndex": 0,
+      "explanation": "When sunlight splits water molecules in the thylakoid membranes, oxygen atoms combine to form O2, which is released as a vital byproduct.",
+      "difficulty": "easy",
+      "concept": "photolysis"
+    },
+    {
+      "id": "q2",
+      "question": "Where do the light-dependent reactions take place inside a plant cell?",
+      "options": ["Thylakoid membranes", "Stroma fluid", "Mitochondrial matrix", "Cell wall"],
+      "correctIndex": 0,
+      "explanation": "Light-dependent reactions take place in the thylakoid membranes of chloroplasts, where chlorophyll pigment complexes are embedded.",
+      "difficulty": "easy",
+      "concept": "chloroplast anatomy"
+    },
+    {
+      "id": "q3",
+      "question": "What two vital energy carrier molecules are produced during the light reactions to power the Calvin cycle?",
+      "options": [
+        "ATP and NADPH",
+        "Glucose and Cellulose",
+        "ADP and NADP+",
+        "RuBisCO and Carbonic Acid"
+      ],
+      "correctIndex": 0,
+      "explanation": "Light energy powers electron transport, reducing NADP+ into NADPH and synthesizing ATP via ATP synthase.",
+      "difficulty": "medium",
+      "concept": "cellular energy carriers"
+    },
+    {
+      "id": "q4",
+      "question": "What role does the enzyme RuBisCO perform in the Calvin cycle?",
+      "options": [
+        "It fixes carbon dioxide into organic molecules",
+        "It reflects green wavelengths of light",
+        "It hydrolyzes water molecules into protons",
+        "It transports glucose out of the cell wall"
+      ],
+      "correctIndex": 0,
+      "explanation": "RuBisCO catalyzes the critical initial carbon fixation step, bonding CO2 onto 5-carbon ribulose bisphosphate.",
+      "difficulty": "medium",
+      "concept": "carbon fixation"
+    },
+    {
+      "id": "q5",
+      "question": "Why can the Calvin cycle continue for a period of time in darkness?",
+      "options": [
+        "It directly uses stored ATP and NADPH from earlier light reactions",
+        "It uses thermal infrared radiation from the soil",
+        "It requires no chemical energy to synthesize sugar",
+        "Chloroplasts produce their own internal light"
+      ],
+      "correctIndex": 0,
+      "explanation": "The Calvin cycle itself does not require photons directly; it relies on the chemical battery energy (ATP/NADPH) generated during the daytime.",
+      "difficulty": "hard",
+      "concept": "light-independent reactions"
+    },
+    {
+      "id": "q6",
+      "question": "If a plant's thylakoid membranes are damaged, which immediate cellular process will be halted?",
+      "options": [
+        "ATP synthesis and photolysis of water",
+        "Carbon dioxide absorption by stomata",
+        "Storage of water in central vacuoles",
+        "Cellular division in roots"
+      ],
+      "correctIndex": 0,
+      "explanation": "Because thylakoid membranes hold photosystems and ATP synthase, damaging them immediately breaks electron transport and water splitting.",
+      "difficulty": "hard",
+      "concept": "thylakoid function"
+    }
+  ],
+  "flashcards": [
+    {
+      "id": "f1",
+      "front": "What is Chlorophyll?",
+      "back": "The green pigment in thylakoids that absorbs blue and red wavelengths of sunlight to initiate photosynthesis.",
+      "concept": "pigments"
+    },
+    {
+      "id": "f2",
+      "front": "What is a Thylakoid?",
+      "back": "A flattened, membrane-bound sac inside a chloroplast where light-dependent reactions take place.",
+      "concept": "cell structure"
+    },
+    {
+      "id": "f3",
+      "front": "What is the Stroma?",
+      "back": "The fluid-filled interior space of a chloroplast surrounding the thylakoids, where the Calvin cycle occurs.",
+      "concept": "cell structure"
+    },
+    {
+      "id": "f4",
+      "front": "What is Photolysis?",
+      "back": "The chemical process of splitting water molecules into protons, electrons, and oxygen using light energy.",
+      "concept": "light reactions"
+    },
+    {
+      "id": "f5",
+      "front": "What is ATP?",
+      "back": "Adenosine Triphosphate: the primary energy currency of the cell, carrying energy in its phosphate bonds.",
+      "concept": "energy"
+    },
+    {
+      "id": "f6",
+      "front": "What is RuBisCO?",
+      "back": "The abundant plant enzyme responsible for capturing atmospheric carbon dioxide during the Calvin cycle.",
+      "concept": "enzymes"
+    },
+    {
+      "id": "f7",
+      "front": "What is Glucose?",
+      "back": "A simple 6-carbon sugar (C6H12O6) synthesized by plants to store energy and build cell walls.",
+      "concept": "carbohydrates"
+    },
+    {
+      "id": "f8",
+      "front": "What are Stomata?",
+      "back": "Microscopic pores on leaf surfaces that open and close to regulate gas exchange (CO2 in, O2 and water vapor out).",
+      "concept": "leaf anatomy"
+    }
+  ],
+  "studyPlan": [
+    {
+      "day": 1,
+      "title": "Mastering the Anatomy: Chloroplasts & Pigments",
+      "tasks": [
+        "Read the simplified overview of Chloroplasts and Thylakoids (5 minutes).",
+        "Review Flashcards #1, #2, and #3 twice.",
+        "Take Quiz Questions #1 and #2."
+      ],
+      "estimatedMinutes": 20
+    },
+    {
+      "day": 2,
+      "title": "Unlocking the Light Reactions & Photolysis",
+      "tasks": [
+        "Listen to the 3-minute lecture clip with synchronized captions.",
+        "Practice explaining water splitting (photolysis) in your own words.",
+        "Review Flashcards #4 and #5."
+      ],
+      "estimatedMinutes": 20
+    },
+    {
+      "day": 3,
+      "title": "Navigating the Calvin Cycle & RuBisCO",
+      "tasks": [
+        "Study the 3 steps of carbon fixation in the stroma.",
+        "Review Flashcards #6 and #7.",
+        "Complete Quiz Questions #3 and #4."
+      ],
+      "estimatedMinutes": 20
+    },
+    {
+      "day": 4,
+      "title": "Connecting Photosynthesis to Cellular Respiration",
+      "tasks": [
+        "Review the golden summary equation: Light + H2O + CO2 -> Glucose + O2.",
+        "Answer challenging Quiz Questions #5 and #6.",
+        "Review all 8 flashcards in shuffle mode."
+      ],
+      "estimatedMinutes": 20
+    },
+    {
+      "day": 5,
+      "title": "Comprehensive Review & Final Self-Assessment",
+      "tasks": [
+        "Retake all 6 quiz questions to achieve 100% mastery.",
+        "Export and review the lecture study transcript.",
+        "Celebrate completing the Photosynthesis study module!"
+      ],
+      "estimatedMinutes": 20
+    }
+  ],
+  "fallbackUsed": true
+}
