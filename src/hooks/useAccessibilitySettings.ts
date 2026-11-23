@@ -5,6 +5,8 @@ import {
   AccessibilitySettings,
   AccessibilityProfile,
   DEFAULT_ACCESSIBILITY_SETTINGS,
+  DEFAULT_FOCUS_SETTINGS,
+  FocusSettings,
 } from "@/types/api";
 
 const STORAGE_KEY = "inclusive_learning_assistant_settings_v1";
@@ -21,7 +23,14 @@ export function useAccessibilitySettings() {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        setSettings((prev) => ({ ...prev, ...parsed }));
+        setSettings((prev) => ({
+          ...prev,
+          ...parsed,
+          focus: {
+            ...DEFAULT_FOCUS_SETTINGS,
+            ...(parsed?.focus || {}),
+          },
+        }));
       }
     } catch {
       // Fallback silently if storage access fails
@@ -104,10 +113,31 @@ export function useAccessibilitySettings() {
     [updateSettings]
   );
 
+  const updateFocusSettings = useCallback(
+    (newFocus: Partial<FocusSettings>) => {
+      setSettings((prev) => {
+        const updatedFocus = {
+          ...DEFAULT_FOCUS_SETTINGS,
+          ...(prev.focus || {}),
+          ...newFocus,
+        };
+        const updated = { ...prev, focus: updatedFocus };
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        } catch {
+          // Ignore
+        }
+        return updated;
+      });
+    },
+    []
+  );
+
   return {
     settings,
     isLoaded,
     updateSettings,
+    updateFocusSettings,
     setProfile,
     setLanguage,
     resetSettings,

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { DocumentChunk, AccessibilitySettings } from "@/types/api";
+import { DocumentChunk, AccessibilitySettings, FocusSettings, DEFAULT_FOCUS_SETTINGS } from "@/types/api";
 import {
   Eye,
   Volume2,
@@ -13,6 +13,10 @@ import {
   Gauge,
   Sparkles,
 } from "lucide-react";
+import { FocusToolbar } from "./FocusToolbar";
+import { ReadingRuler } from "./ReadingRuler";
+import { LineFocusMask } from "./LineFocusMask";
+import { SyllableText } from "./SyllableText";
 
 interface LowVisionReaderProps {
   chunks: DocumentChunk[];
@@ -29,6 +33,15 @@ export function LowVisionReader({
   const [isPaused, setIsPaused] = React.useState(false);
   const [speakingChunkIndex, setSpeakingChunkIndex] = React.useState<number | null>(null);
   const [spokenCharIndex, setSpokenCharIndex] = React.useState<number>(0);
+
+  const focus: FocusSettings = {
+    ...DEFAULT_FOCUS_SETTINGS,
+    ...(settings.focus || {}),
+  };
+
+  const handleUpdateFocus = (newFocus: Partial<FocusSettings>) => {
+    onUpdateSettings({ focus: { ...focus, ...newFocus } });
+  };
 
   const utteranceRef = React.useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -139,6 +152,9 @@ export function LowVisionReader({
   // Render text with word-level or sentence-level highlighting
   const renderHighlightedText = (text: string, isChunkActive: boolean) => {
     if (!isChunkActive || spokenCharIndex <= 0) {
+      if (focus.syllableBreakdown) {
+        return <SyllableText text={text} enabled={true} />;
+      }
       return <span>{text}</span>;
     }
 
@@ -291,6 +307,30 @@ export function LowVisionReader({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Overlays for Ruler and Line Focus */}
+      {focus.mode === "ruler" && (
+        <ReadingRuler
+          heightPx={focus.rulerHeightPx}
+          opacity={focus.rulerOpacity}
+          enabled={true}
+        />
+      )}
+
+      {focus.mode === "line_focus" && (
+        <LineFocusMask
+          visibleLines={focus.visibleLines}
+          enabled={true}
+        />
+      )}
+
+      {/* Embedded Focus Toolbar for Low Vision Reader */}
+      <div className="mb-8">
+        <FocusToolbar
+          focus={focus}
+          onUpdateFocus={handleUpdateFocus}
+        />
       </div>
 
       {/* Chunks Display with Active Highlighting */}

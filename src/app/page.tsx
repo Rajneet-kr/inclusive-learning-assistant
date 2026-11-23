@@ -14,6 +14,7 @@ import {
   ArrowRight,
   Upload,
   Binary,
+  Maximize2,
 } from "lucide-react";
 import { useAccessibilitySettings } from "@/hooks/useAccessibilitySettings";
 import { AccessibilityToolbar } from "@/components/accessibility/AccessibilityToolbar";
@@ -42,12 +43,31 @@ import {
 import { getLanguageOption, getTextDirection } from "@/lib/i18n";
 
 export default function HomePage() {
-  const { settings, isLoaded, setProfile, updateSettings, resetSettings } =
-    useAccessibilitySettings();
+  const {
+    settings,
+    isLoaded,
+    setProfile,
+    updateSettings,
+    updateFocusSettings,
+    resetSettings,
+  } = useAccessibilitySettings();
 
   const [activeTab, setActiveTab] = React.useState<
     "dyslexia" | "low_vision" | "hearing" | "practice" | "stem"
   >("dyslexia");
+
+  const isDistractionFree = settings.focus?.mode === "distraction_free";
+
+  // Escape key shortcut to exit distraction-free focus mode
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && settings.focus?.mode === "distraction_free") {
+        updateFocusSettings({ mode: "off" });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [settings.focus?.mode, updateFocusSettings]);
 
   const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
   const [loadedNote, setLoadedNote] = React.useState<SampleBiologyNote | null>(null);
@@ -289,94 +309,120 @@ export default function HomePage() {
           : "bg-slate-50 text-slate-900"
       }`}
     >
-      {/* Top Banner & Header */}
-      <header
-        className={`border-b ${
-          settings.highContrast
-            ? "border-yellow-300 bg-black"
-            : "border-slate-200 bg-white"
-        } sticky top-0 z-40`}
-      >
-        <div className="max-w-6xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
-              <BrainCircuit className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-bold text-lg tracking-tight">
-                  Inclusive Learning Assistant
-                </h1>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                  Guest Mode &bull; Offline Safe
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                Accessible study companion for Dyslexic, Low-Vision &amp; Deaf learners
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Quick Profile Pill */}
-            <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 capitalize flex items-center gap-1.5">
-              Profile: <strong>{settings.profile.replace("_", " ")}</strong>
+      {/* Distraction-Free Sticky Bar for ADHD & Neurodivergent Focus */}
+      {isDistractionFree && (
+        <div className="sticky top-0 z-50 bg-indigo-950 text-white px-4 py-2.5 flex items-center justify-between shadow-md border-b border-indigo-800">
+          <div className="flex items-center gap-2">
+            <Maximize2 className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-bold uppercase tracking-wider">
+              Distraction-Free Focus Mode Active
+            </span>
+            <span className="text-xs text-indigo-300 hidden sm:inline">
+              (Press Escape or click exit)
             </span>
           </div>
+          <button
+            type="button"
+            onClick={() => updateFocusSettings({ mode: "off" })}
+            className="px-3 py-1 bg-white text-indigo-950 hover:bg-indigo-50 font-bold text-xs rounded-lg transition-colors shadow-xs"
+          >
+            Exit Distraction-Free (Esc)
+          </button>
         </div>
-      </header>
+      )}
 
-      <main id="main-content" className="max-w-6xl mx-auto px-4 py-8 space-y-8">
-        {/* Hero Section with 1-Click "Load Sample Note" Button */}
-        <section
-          aria-label="Demo Action Banner"
-          className="rounded-3xl bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-900 text-white p-8 shadow-md relative overflow-hidden"
+      {/* Top Banner & Header (hidden in distraction-free mode) */}
+      {!isDistractionFree && (
+        <header
+          className={`border-b ${
+            settings.highContrast
+              ? "border-yellow-300 bg-black"
+              : "border-slate-200 bg-white"
+          } sticky top-0 z-40`}
         >
-          <div className="relative z-10 max-w-2xl">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-semibold mb-4 backdrop-blur-xs">
-              <Zap className="w-3.5 h-3.5 text-yellow-300" /> Hackathon Demo Ready &bull; Gemini &amp; Deepgram Live
+          <div className="max-w-6xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                <BrainCircuit className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="font-bold text-lg tracking-tight">
+                    Inclusive Learning Assistant
+                  </h1>
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                    Guest Mode &bull; Offline Safe
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Accessible study companion for Dyslexic, Low-Vision &amp; Deaf learners
+                </p>
+              </div>
             </div>
-            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl mb-3">
-              Learn Without Barriers.
-            </h2>
-            <p className="text-blue-100 text-base leading-relaxed mb-6">
-              Instantly transform complex lecture notes and textbooks into simplified dyslexia chunks, high-contrast reflowable text with TTS, synchronized captions, and adaptive practice quizzes.
-            </p>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={handleLoadSample}
-                className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-white text-blue-900 font-bold text-base hover:bg-blue-50 shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
-              >
-                <Sparkles className="w-5 h-5 text-amber-500" />
-                ⚡ 1-Click Load Sample Biology Note
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsUploadModalOpen(true)}
-                className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-blue-800/80 hover:bg-blue-800 text-white font-semibold text-base border border-blue-400/30 transition-colors"
-              >
-                <Upload className="w-4 h-4 text-blue-200" /> Upload or Paste Text
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("stem")}
-                className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-indigo-900/80 hover:bg-indigo-900 text-white font-semibold text-base border border-indigo-400/30 transition-colors"
-              >
-                <Binary className="w-4 h-4 text-indigo-300" /> 📐 STEM Verbalizer
-              </button>
+            <div className="flex items-center gap-3">
+              {/* Quick Profile Pill */}
+              <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 capitalize flex items-center gap-1.5">
+                Profile: <strong>{settings.profile.replace("_", " ")}</strong>
+              </span>
             </div>
           </div>
+        </header>
+      )}
 
-          {/* Decorative Background Glow */}
-          <div className="absolute right-0 bottom-0 translate-x-12 translate-y-12 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
-        </section>
+      <main id="main-content" className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+        {/* Hero Section with 1-Click "Load Sample Note" Button (hidden in distraction-free mode) */}
+        {!isDistractionFree && (
+          <section
+            aria-label="Demo Action Banner"
+            className="rounded-3xl bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-900 text-white p-8 shadow-md relative overflow-hidden"
+          >
+            <div className="relative z-10 max-w-2xl">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-semibold mb-4 backdrop-blur-xs">
+                <Zap className="w-3.5 h-3.5 text-yellow-300" /> Hackathon Demo Ready &bull; Gemini &amp; Deepgram Live
+              </div>
+              <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl mb-3">
+                Learn Without Barriers.
+              </h2>
+              <p className="text-blue-100 text-base leading-relaxed mb-6">
+                Instantly transform complex lecture notes and textbooks into simplified dyslexia chunks, high-contrast reflowable text with TTS, synchronized captions, and adaptive practice quizzes.
+              </p>
 
-        {/* Status Notice Toast / Banner */}
-        {statusNotice && (
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleLoadSample}
+                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-white text-blue-900 font-bold text-base hover:bg-blue-50 shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
+                >
+                  <Sparkles className="w-5 h-5 text-amber-500" />
+                  ⚡ 1-Click Load Sample Biology Note
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsUploadModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-blue-800/80 hover:bg-blue-800 text-white font-semibold text-base border border-blue-400/30 transition-colors"
+                >
+                  <Upload className="w-4 h-4 text-blue-200" /> Upload or Paste Text
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("stem")}
+                  className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-indigo-900/80 hover:bg-indigo-900 text-white font-semibold text-base border border-indigo-400/30 transition-colors"
+                >
+                  <Binary className="w-4 h-4 text-indigo-300" /> 📐 STEM Verbalizer
+                </button>
+              </div>
+            </div>
+
+            {/* Decorative Background Glow */}
+            <div className="absolute right-0 bottom-0 translate-x-12 translate-y-12 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
+          </section>
+        )}
+
+        {/* Status Notice Toast / Banner (hidden in distraction-free mode) */}
+        {!isDistractionFree && statusNotice && (
           <div
             role="status"
             className={`p-4 rounded-xl border flex items-center justify-between shadow-xs animate-in fade-in ${
@@ -395,15 +441,17 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Accessibility Preferences Toolbar */}
-        <AccessibilityToolbar
-          settings={settings}
-          onProfileChange={setProfile}
-          onUpdateSettings={updateSettings}
-          onReset={resetSettings}
-          onLanguageChange={handleLanguageChange}
-          isTranslating={isTranslating}
-        />
+        {/* Accessibility Preferences Toolbar (hidden in distraction-free mode) */}
+        {!isDistractionFree && (
+          <AccessibilityToolbar
+            settings={settings}
+            onProfileChange={setProfile}
+            onUpdateSettings={updateSettings}
+            onReset={resetSettings}
+            onLanguageChange={handleLanguageChange}
+            isTranslating={isTranslating}
+          />
+        )}
 
         {/* If active tab is STEM verbalizer, render it directly even if no document is loaded */}
         {activeTab === "stem" && !loadedNote ? (
@@ -581,6 +629,7 @@ export default function HomePage() {
                 settings={settings}
                 language={settings.language || "en"}
                 direction={getTextDirection(settings.language || "en")}
+                onUpdateSettings={updateSettings}
               />
             )}
 
@@ -627,10 +676,12 @@ export default function HomePage() {
         onProcessingComplete={handleProcessingComplete}
       />
 
-      {/* Footer */}
-      <footer className="border-t border-slate-200 py-6 mt-16 text-center text-xs text-slate-500">
-        <p>Inclusive Learning Assistant &bull; Built for Accessibility &bull; Offline Fallback Ready</p>
-      </footer>
+      {/* Footer (hidden in distraction-free mode) */}
+      {!isDistractionFree && (
+        <footer className="border-t border-slate-200 py-6 mt-16 text-center text-xs text-slate-500">
+          <p>Inclusive Learning Assistant &bull; Built for Accessibility &bull; Offline Fallback Ready</p>
+        </footer>
+      )}
     </div>
   );
 }

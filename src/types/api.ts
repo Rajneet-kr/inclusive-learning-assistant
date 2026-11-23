@@ -249,6 +249,16 @@ export const DEFAULT_ACCESSIBILITY_SETTINGS: AccessibilitySettings = {
   captionsEnabled: false,
   captionsFontSize: 16,
   language: "en",
+  focus: {
+    mode: "off",
+    rulerHeightPx: 48,
+    rulerOpacity: 0.25,
+    visibleLines: 2,
+    syllableBreakdown: false,
+    microSprintMinutes: 10,
+    microSprintActive: false,
+    reduceMotion: false,
+  },
 };
 
 // ==========================================
@@ -368,6 +378,17 @@ export interface FocusSettings {
   microSprintActive: boolean;
   reduceMotion: boolean;
 }
+
+export const DEFAULT_FOCUS_SETTINGS: FocusSettings = {
+  mode: "off",
+  rulerHeightPx: 48,
+  rulerOpacity: 0.25,
+  visibleLines: 2,
+  syllableBreakdown: false,
+  microSprintMinutes: 10,
+  microSprintActive: false,
+  reduceMotion: false,
+};
 
 export interface FocusSession {
   id: string;

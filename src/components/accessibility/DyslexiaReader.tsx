@@ -7,9 +7,15 @@ import {
   AccessibilitySettings,
   SupportedLanguageCode,
   TextDirection,
+  FocusSettings,
+  DEFAULT_FOCUS_SETTINGS,
 } from "@/types/api";
 import { BookOpen, HelpCircle, VolumeX, Globe } from "lucide-react";
 import { getLanguageOption, getTextDirection, checkBrowserTtsVoiceAvailable } from "@/lib/i18n";
+import { FocusToolbar } from "./FocusToolbar";
+import { ReadingRuler } from "./ReadingRuler";
+import { LineFocusMask } from "./LineFocusMask";
+import { SyllableText } from "./SyllableText";
 
 type AnySection = SimplifiedSection | TranslatedSimplifiedSection;
 
@@ -18,6 +24,7 @@ interface DyslexiaReaderProps {
   settings: AccessibilitySettings;
   language?: SupportedLanguageCode;
   direction?: TextDirection;
+  onUpdateSettings?: (settings: Partial<AccessibilitySettings>) => void;
 }
 
 // Client-side Bionic Reading helper: bold the first 40-50% of each word
@@ -48,10 +55,22 @@ export function DyslexiaReader({
   settings,
   language = "en",
   direction,
+  onUpdateSettings,
 }: DyslexiaReaderProps) {
   const currentLang = language || settings.language || "en";
   const currentDir = direction || getTextDirection(currentLang);
   const langOption = getLanguageOption(currentLang);
+
+  const focus: FocusSettings = {
+    ...DEFAULT_FOCUS_SETTINGS,
+    ...(settings.focus || {}),
+  };
+
+  const handleUpdateFocus = (newFocus: Partial<FocusSettings>) => {
+    if (onUpdateSettings) {
+      onUpdateSettings({ focus: { ...focus, ...newFocus } });
+    }
+  };
 
   // Check if browser has speech synthesis voice for this language
   const [hasTtsVoice, setHasTtsVoice] = React.useState(true);
@@ -132,6 +151,30 @@ export function DyslexiaReader({
         </div>
       )}
 
+      {/* Overlays for Ruler and Line Focus */}
+      {focus.mode === "ruler" && (
+        <ReadingRuler
+          heightPx={focus.rulerHeightPx}
+          opacity={focus.rulerOpacity}
+          enabled={true}
+        />
+      )}
+
+      {focus.mode === "line_focus" && (
+        <LineFocusMask
+          visibleLines={focus.visibleLines}
+          enabled={true}
+        />
+      )}
+
+      {/* Embedded ADHD & Neurodivergent Focus Suite */}
+      <div className="mb-6">
+        <FocusToolbar
+          focus={focus}
+          onUpdateFocus={handleUpdateFocus}
+        />
+      </div>
+
       <div className="space-y-6">
         {sections.map((section, idx) => (
           <article
@@ -148,15 +191,24 @@ export function DyslexiaReader({
             {/* Key Idea Callout */}
             <div className="mb-3 px-3.5 py-2 rounded-lg bg-amber-100/80 border-l-4 border-amber-600">
               <p className="text-sm font-semibold text-amber-950">
-                📌 Key Idea: {section.keyIdea}
+                📌 Key Idea:{" "}
+                {focus.syllableBreakdown ? (
+                  <SyllableText text={section.keyIdea} enabled={true} />
+                ) : (
+                  section.keyIdea
+                )}
               </p>
             </div>
 
             {/* Main Simplified Text */}
             <div className="text-slate-800">
-              {settings.bionicReading
-                ? renderBionicText(section.simpleText)
-                : section.simpleText}
+              {focus.syllableBreakdown ? (
+                <SyllableText text={section.simpleText} enabled={true} />
+              ) : settings.bionicReading ? (
+                renderBionicText(section.simpleText)
+              ) : (
+                section.simpleText
+              )}
             </div>
 
             {/* Plain-Language Jargon Glossary */}
