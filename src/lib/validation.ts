@@ -76,3 +76,35 @@ export const TranslateRequestSchema = z.object({
     .default([]),
 });
 
+export const TutorRequestSchema = z.object({
+  documentId: z.string().min(1, "documentId is required"),
+  question: z.string().min(1, "question cannot be empty"),
+  selectedChunkIds: z.array(z.string()).default([]),
+  accessibilityProfile: z
+    .enum(["dyslexia", "low_vision", "hearing"])
+    .default("dyslexia"),
+  language: z.string().default("en"),
+  voiceQuestion: z.boolean().default(false),
+  contextChunks: z
+    .array(
+      z.object({
+        id: z.string(),
+        heading: z.string().default("Section"),
+        text: z.string().default(""),
+        keyTerms: z.array(z.string()).optional(),
+      })
+    )
+    .optional(),
+  transcriptSegments: z
+    .array(
+      z.object({
+        id: z.number().optional(),
+        start: z.number().optional(),
+        end: z.number().optional(),
+        text: z.string().default(""),
+      })
+    )
+    .optional(),
+});
+
+

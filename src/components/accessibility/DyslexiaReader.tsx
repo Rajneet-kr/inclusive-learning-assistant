@@ -176,11 +176,15 @@ export function DyslexiaReader({
       </div>
 
       <div className="space-y-6">
-        {sections.map((section, idx) => (
-          <article
-            key={section.chunkId || idx}
-            className="p-5 rounded-xl border border-black/10 bg-white/70 shadow-sm"
-          >
+        {sections.map((section, idx) => {
+          const chunkIdentifier = section.chunkId || `chunk_${idx + 1}`;
+          return (
+            <article
+              key={chunkIdentifier}
+              id={`chunk-${chunkIdentifier}`}
+              data-chunk-id={chunkIdentifier}
+              className="p-5 rounded-xl border border-black/10 bg-white/70 shadow-sm transition-all target:ring-4 target:ring-amber-500 target:bg-amber-50"
+            >
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-lg text-slate-900">{section.title}</h3>
               <span className="text-xs font-medium text-slate-500">
@@ -241,7 +245,8 @@ export function DyslexiaReader({
               </div>
             )}
           </article>
-        ))}
+        );
+      })}
       </div>
     </div>
   );

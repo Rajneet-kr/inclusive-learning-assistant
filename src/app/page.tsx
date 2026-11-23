@@ -27,6 +27,7 @@ import { FlashcardDeck } from "@/components/practice/FlashcardDeck";
 import { StudyPlanTimeline } from "@/components/practice/StudyPlanTimeline";
 import { UploadModal } from "@/components/upload/UploadModal";
 import { StemVerbalizerPanel } from "@/components/stem/StemVerbalizerPanel";
+import { TutorPanel } from "@/components/tutor/TutorPanel";
 import {
   sampleBiologyNote,
   sampleLectureTranscript,
@@ -70,6 +71,7 @@ export default function HomePage() {
   }, [settings.focus?.mode, updateFocusSettings]);
 
   const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
+  const [isTutorOpen, setIsTutorOpen] = React.useState(false);
   const [loadedNote, setLoadedNote] = React.useState<SampleBiologyNote | null>(null);
   const [practicePlan, setPracticePlan] = React.useState<PracticeResponse>(samplePracticePlan);
   const [transcript, setTranscript] = React.useState<TranscribeResponse>(sampleLectureTranscript);
@@ -79,6 +81,39 @@ export default function HomePage() {
     message: string;
     type: "live" | "fallback";
   } | null>(null);
+
+  const handleNavigateToChunk = (chunkId: string) => {
+    // If not in a reading tab, switch to active profile's reading tab
+    if (activeTab !== "dyslexia" && activeTab !== "low_vision") {
+      setActiveTab(settings.profile === "low_vision" ? "low_vision" : "dyslexia");
+    }
+
+    setTimeout(() => {
+      const targetId = `chunk-${chunkId}`;
+      const element =
+        document.getElementById(targetId) ||
+        document.querySelector(`[data-chunk-id="${chunkId}"]`);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+        element.classList.add("ring-4", "ring-indigo-500");
+        setTimeout(() => {
+          element.classList.remove("ring-4", "ring-indigo-500");
+        }, 3000);
+      }
+    }, 150);
+  };
+
+  const handleNavigateToTimestamp = (startSeconds: number) => {
+    setActiveTab("hearing");
+    setTimeout(() => {
+      const transcriptSection = document.querySelector(
+        '[aria-label="Synchronized Interactive Transcript"]'
+      );
+      if (transcriptSection) {
+        transcriptSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 150);
+  };
 
   // Sync activeTab with accessibility profile selection
   React.useEffect(() => {
@@ -674,6 +709,33 @@ export default function HomePage() {
         onClose={() => setIsUploadModalOpen(false)}
         activeProfile={settings.profile}
         onProcessingComplete={handleProcessingComplete}
+      />
+
+      {/* Floating Grounded Tutor Button (Hidden in distraction-free mode or when no doc loaded) */}
+      {!isDistractionFree && loadedNote && (
+        <aside aria-label="Grounded AI Study Tutor Action" className="fixed bottom-6 right-6 z-40">
+          <button
+            type="button"
+            onClick={() => setIsTutorOpen(true)}
+            aria-label="Ask about this material. Opens grounded AI study tutor."
+            className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all border border-indigo-400/40"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>Ask about this material</span>
+          </button>
+        </aside>
+      )}
+
+      {/* Grounded AI Study Tutor Slide-Over Panel */}
+      <TutorPanel
+        isOpen={isTutorOpen}
+        onClose={() => setIsTutorOpen(false)}
+        documentId={loadedNote?.documentId || "doc_active"}
+        settings={settings}
+        contextChunks={loadedNote?.chunks}
+        transcriptSegments={transcript?.segments}
+        onNavigateToChunk={handleNavigateToChunk}
+        onNavigateToTimestamp={handleNavigateToTimestamp}
       />
 
       {/* Footer (hidden in distraction-free mode) */}

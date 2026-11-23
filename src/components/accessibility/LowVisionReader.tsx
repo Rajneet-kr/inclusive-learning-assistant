@@ -337,17 +337,20 @@ export function LowVisionReader({
       <div className="space-y-8">
         {chunks.map((chunk, idx) => {
           const isChunkActive = (isPlaying || isPaused) && speakingChunkIndex === idx;
+          const chunkIdentifier = chunk.id || `chunk_${idx + 1}`;
 
           return (
             <article
-              key={chunk.id || idx}
+              key={chunkIdentifier}
+              id={`chunk-${chunkIdentifier}`}
+              data-chunk-id={chunkIdentifier}
               className={`p-6 rounded-2xl border-2 transition-all ${
                 isChunkActive
                   ? settings.highContrast
                     ? "border-yellow-400 bg-zinc-950 shadow-2xl ring-4 ring-yellow-400/30"
                     : "border-blue-600 bg-blue-50/70 shadow-lg ring-4 ring-blue-500/20"
                   : "border-current bg-transparent"
-              }`}
+              } target:ring-4 target:ring-yellow-400`}
             >
               <div className="flex flex-wrap items-center justify-between mb-4 gap-2">
                 <div className="flex items-center gap-2">
