@@ -1,0 +1,82 @@
+{
+  "documentId": "stem_sample_01",
+  "elements": [
+    {
+      "id": "elem_eq_1",
+      "type": "equation",
+      "rawText": "x = (-b ± √(b² - 4ac)) / (2a)",
+      "latex": "x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}",
+      "accessibleMathText": "x equals negative b plus or minus square root of b squared minus 4 a c, all over 2 a",
+      "description": "The quadratic formula used to solve any second-degree polynomial equation.",
+      "stepByStepExplanation": [
+        "Step 1: Identify the standard quadratic form a x squared plus b x plus c equals zero.",
+        "Step 2: Calculate the discriminant under the radical: b squared minus 4 times a times c.",
+        "Step 3: If discriminant is positive, calculate two real roots using plus and minus.",
+        "Step 4: Divide the combined numerator by 2 times a."
+      ],
+      "variables": [
+        { "symbol": "x", "meaning": "Unknown roots or solutions to the quadratic equation" },
+        { "symbol": "a", "meaning": "Coefficient of the quadratic x squared term (cannot equal 0)" },
+        { "symbol": "b", "meaning": "Coefficient of the linear x term" },
+        { "symbol": "c", "meaning": "Constant numerical term" }
+      ],
+      "confidence": "high"
+    },
+    {
+      "id": "elem_chem_2",
+      "type": "chemical_reaction",
+      "rawText": "6CO2 + 6H2O -> C6H12O6 + 6O2",
+      "latex": "6\\text{CO}_2 + 6\\text{H}_2\\text{O} \\rightarrow \\text{C}_6\\text{H}_{12}\\text{O}_6 + 6\\text{O}_2",
+      "accessibleMathText": "6 molecules of carbon dioxide plus 6 molecules of water react to form 1 molecule of glucose sugar and 6 molecules of oxygen gas",
+      "description": "Overall chemical reaction equation for oxygenic photosynthesis inside chloroplasts.",
+      "stepByStepExplanation": [
+        "Step 1: Plant leaves absorb 6 molecules of atmospheric carbon dioxide (CO2).",
+        "Step 2: Roots absorb 6 molecules of liquid water (H2O).",
+        "Step 3: Sunlight photon energy splits water molecules and fixes carbon inside the stroma.",
+        "Step 4: The plant produces 1 stable glucose molecule (C6H12O6) for cellular energy and releases 6 oxygen molecules (O2) into the atmosphere."
+      ],
+      "variables": [
+        { "symbol": "CO2", "meaning": "Carbon Dioxide gas from atmosphere" },
+        { "symbol": "H2O", "meaning": "Water absorbed by plant roots" },
+        { "symbol": "C6H12O6", "meaning": "Glucose sugar supplying cellular energy" },
+        { "symbol": "O2", "meaning": "Oxygen gas released into the atmosphere" }
+      ],
+      "confidence": "high"
+    },
+    {
+      "id": "elem_graph_3",
+      "type": "graph",
+      "rawText": "Chlorophyll Light Absorption Spectrum vs Wavelength (nm)",
+      "accessibleMathText": "A line graph showing light absorption versus wavelength from 400 to 700 nanometers. Chlorophyll absorbs strongly in blue and red light, but reflects green light.",
+      "description": "Absorption spectrum graph demonstrating how chlorophyll pigments absorb light wavelengths.",
+      "stepByStepExplanation": [
+        "Step 1: The horizontal axis measures light wavelength in nanometers from 400 (violet) to 700 (red).",
+        "Step 2: The vertical axis measures percentage of solar photon absorption.",
+        "Step 3: A sharp blue peak appears at 430 nanometers.",
+        "Step 4: Absorption drops to near zero in the green band (500–550 nm), which is reflected back to our eyes.",
+        "Step 5: A second high peak appears at 660 nanometers in the red spectrum."
+      ],
+      "chart": {
+        "title": "Chlorophyll Absorption Spectrum",
+        "xAxis": "Wavelength (nanometers, 400 to 700 nm)",
+        "yAxis": "Relative Light Absorption (%)",
+        "series": [
+          {
+            "label": "Chlorophyll a",
+            "trend": "Twin absorption peaks at blue (430 nm) and red (660 nm) with zero absorption in green",
+            "notablePoints": ["Peak 1: 430 nm (92% blue absorption)", "Trough: 520 nm (7% green reflected)", "Peak 2: 660 nm (84% red absorption)"]
+          }
+        ]
+      },
+      "confidence": "high"
+    }
+  ],
+  "overallExplanation": "Identified 3 core STEM items from study materials: the Quadratic Formula algebraic equation, the Photosynthesis chemical equation, and the Chlorophyll Photon Absorption Spectrum line graph.",
+  "keyTakeaways": [
+    "Algebraic equations can be read aloud without confusing LaTeX syntax.",
+    "Chemical reactions show exact reactant-to-product balance.",
+    "Spectroscopy graphs explain why plant leaves appear green."
+  ],
+  "warnings": [],
+  "fallbackUsed": false
+}

@@ -13,6 +13,7 @@ import {
   HelpCircle,
   ArrowRight,
   Upload,
+  Binary,
 } from "lucide-react";
 import { useAccessibilitySettings } from "@/hooks/useAccessibilitySettings";
 import { AccessibilityToolbar } from "@/components/accessibility/AccessibilityToolbar";
@@ -24,6 +25,7 @@ import { QuizCard } from "@/components/practice/QuizCard";
 import { FlashcardDeck } from "@/components/practice/FlashcardDeck";
 import { StudyPlanTimeline } from "@/components/practice/StudyPlanTimeline";
 import { UploadModal } from "@/components/upload/UploadModal";
+import { StemVerbalizerPanel } from "@/components/stem/StemVerbalizerPanel";
 import {
   sampleBiologyNote,
   sampleLectureTranscript,
@@ -44,7 +46,7 @@ export default function HomePage() {
     useAccessibilitySettings();
 
   const [activeTab, setActiveTab] = React.useState<
-    "dyslexia" | "low_vision" | "hearing" | "practice"
+    "dyslexia" | "low_vision" | "hearing" | "practice" | "stem"
   >("dyslexia");
 
   const [isUploadModalOpen, setIsUploadModalOpen] = React.useState(false);
@@ -358,6 +360,14 @@ export default function HomePage() {
               >
                 <Upload className="w-4 h-4 text-blue-200" /> Upload or Paste Text
               </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("stem")}
+                className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-indigo-900/80 hover:bg-indigo-900 text-white font-semibold text-base border border-indigo-400/30 transition-colors"
+              >
+                <Binary className="w-4 h-4 text-indigo-300" /> 📐 STEM Verbalizer
+              </button>
             </div>
           </div>
 
@@ -395,8 +405,22 @@ export default function HomePage() {
           isTranslating={isTranslating}
         />
 
-        {/* If no note is loaded yet, show prompt banner */}
-        {!loadedNote ? (
+        {/* If active tab is STEM verbalizer, render it directly even if no document is loaded */}
+        {activeTab === "stem" && !loadedNote ? (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              <h2 className="text-xl font-bold text-slate-800">STEM &amp; Diagram Verbalizer Workspace</h2>
+              <button
+                type="button"
+                onClick={handleLoadSample}
+                className="text-xs text-blue-600 hover:underline font-semibold"
+              >
+                &larr; Load Sample Biology Note for Reading Tabs
+              </button>
+            </div>
+            <StemVerbalizerPanel settings={settings} documentId="stem_quick_start" />
+          </div>
+        ) : !loadedNote ? (
           <div className="rounded-2xl border-2 border-dashed border-slate-300 p-12 text-center bg-white shadow-xs">
             <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
               <BookOpen className="w-7 h-7" />
@@ -405,9 +429,9 @@ export default function HomePage() {
               No Document Loaded Yet
             </h3>
             <p className="text-slate-600 max-w-md mx-auto text-sm mb-6">
-              Click the button below to load our prepared sample note on <strong>Photosynthesis</strong>, or click <strong>Upload or Paste Text</strong> to process your own materials.
+              Click the button below to load our prepared sample note on <strong>Photosynthesis</strong>, click <strong>Upload or Paste Text</strong> to process your own materials, or test the <strong>STEM Verbalizer</strong> directly.
             </p>
-            <div className="flex justify-center gap-3">
+            <div className="flex flex-wrap justify-center gap-3">
               <button
                 type="button"
                 onClick={handleLoadSample}
@@ -421,6 +445,13 @@ export default function HomePage() {
                 className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-300 font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
               >
                 <Upload className="w-4 h-4" /> Upload Custom Notes
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("stem")}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-indigo-50 border border-indigo-200 font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+              >
+                <Binary className="w-4 h-4 text-indigo-600" /> Open STEM Verbalizer
               </button>
             </div>
           </div>
@@ -526,6 +557,21 @@ export default function HomePage() {
                 <Sparkles className="w-4 h-4" />
                 Practice &amp; Quiz Deck ({practicePlan.quiz.length} Qs)
               </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "stem"}
+                onClick={() => setActiveTab("stem")}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                  activeTab === "stem"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                <Binary className="w-4 h-4" />
+                STEM &amp; Diagram Verbalizer
+              </button>
             </nav>
 
             {/* View Mode Panels */}
@@ -561,6 +607,13 @@ export default function HomePage() {
                 </div>
                 <StudyPlanTimeline studyPlan={practicePlan.studyPlan} />
               </div>
+            )}
+
+            {activeTab === "stem" && (
+              <StemVerbalizerPanel
+                settings={settings}
+                documentId={loadedNote.documentId}
+              />
             )}
           </div>
         )}
