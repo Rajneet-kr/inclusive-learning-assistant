@@ -230,12 +230,12 @@ export function TutorPanel({
       role="dialog"
       aria-modal="true"
       aria-label="Grounded AI Study Tutor"
-      className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-xs flex justify-end"
+      className="fixed inset-0 z-50 overflow-hidden bg-slate-950/55 backdrop-blur-sm flex justify-end"
     >
       {/* Slide-over panel */}
-      <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-200 motion-reduce:transition-none">
+      <div className="w-full max-w-lg bg-white/95 backdrop-blur-xl h-full shadow-2xl flex flex-col border-l border-slate-200/80 animate-in slide-in-from-right duration-200 motion-reduce:transition-none">
         {/* Header */}
-        <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/90 backdrop-blur-sm">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-xs">
               <Sparkles className="w-4 h-4" />

@@ -34,8 +34,8 @@ export function QuizCard({ questions }: QuizCardProps) {
   if (!currentQ) return null;
 
   return (
-    <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
-      <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-6">
+    <div className="rounded-2xl bg-white/90 backdrop-blur-md border border-slate-200/80 p-6 shadow-sm">
+      <div className="flex items-center justify-between pb-4 border-b border-slate-200/80 mb-6">
         <div>
           <span className="text-xs font-bold uppercase tracking-wider text-blue-600 block">
             Question {currentIndex + 1} of {questions.length}
@@ -55,7 +55,7 @@ export function QuizCard({ questions }: QuizCardProps) {
 
       <div className="space-y-3 mb-6">
         {currentQ.options.map((option, optIdx) => {
-          let optionStyles = "border-slate-200 bg-white hover:bg-slate-50 text-slate-800";
+          let optionStyles = "border-slate-200/80 bg-white/80 backdrop-blur-sm hover:bg-white text-slate-800";
 
           if (selectedOption === optIdx && !isAnswerSubmitted) {
             optionStyles = "border-blue-600 bg-blue-50/70 text-blue-900 ring-2 ring-blue-500";

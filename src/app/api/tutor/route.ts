@@ -110,11 +110,15 @@ export async function POST(request: NextRequest) {
       if (prioritizedChunks.length === 0) prioritizedChunks = allChunks;
     }
 
-    // Score chunks by keyword matches
+    // Score chunks by keyword matches with semantic weighting (headings & key terms have higher signal)
     const scoredChunks = prioritizedChunks.map((c) => {
-      const text = `${c.heading} ${c.text} ${(c.keyTerms || []).join(" ")}`.toLowerCase();
+      const heading = (c.heading || "").toLowerCase();
+      const text = (c.text || "").toLowerCase();
+      const keyTerms = (c.keyTerms || []).map((t) => t.toLowerCase());
       let score = 0;
       for (const kw of keywords) {
+        if (heading.includes(kw)) score += 3;
+        if (keyTerms.some((t) => t.includes(kw))) score += 2;
         if (text.includes(kw)) score += 1;
       }
       return { chunk: c, score };
@@ -202,22 +206,91 @@ ${JSON.stringify(retrievedContext, null, 2)}`;
       };
     };
 
-    const fallbackGenerator = (): TutorAnswer => ({
-      answerId: `ans_fb_${Date.now().toString(36)}`,
-      question,
-      answer:
-        "I could not find enough evidence in this material to answer your question. Please retry or select a specific section from your notes.",
-      simplifiedAnswer:
-        "This note does not have enough information to answer that question. Try selecting a specific section.",
-      confidence: "insufficient_evidence",
-      citations: [],
-      followUpQuestions: [
-        "What are the main concepts covered in this note?",
-        "Can you summarize the first section for me?",
-        "What vocabulary words are defined here?",
-      ],
-      fallbackUsed: true,
-    });
+    const fallbackGenerator = (): TutorAnswer => {
+      const topChunk = scoredChunks[0];
+      const topSegment = scoredSegments[0];
+
+      // If NO meaningful keyword match exists in the document
+      if (
+        keywords.length === 0 ||
+        ((!topChunk || topChunk.score === 0) && (!topSegment || topSegment.score === 0))
+      ) {
+        return {
+          answerId: `ans_fb_${Date.now().toString(36)}`,
+          question,
+          answer:
+            "I could not find enough evidence in this material to answer your question. Please retry or select a specific section from your notes.",
+          simplifiedAnswer:
+            "This note does not have enough information to answer that question. Try selecting a specific section.",
+          confidence: "insufficient_evidence",
+          citations: [],
+          followUpQuestions: [
+            "What are the main concepts covered in this note?",
+            "Can you summarize the first section for me?",
+            "What vocabulary words are defined here?",
+          ],
+          fallbackUsed: true,
+        };
+      }
+
+      // We have meaningful keyword overlap! Assemble grounded extractive answer with real citations
+      const citations: TutorCitation[] = [];
+      let answerParts: string[] = [];
+      let simplifiedSentence = "";
+
+      if (topChunk && topChunk.score > 0) {
+        const chunkText = topChunk.chunk.text || "";
+        const sentences = chunkText
+          .split(/(?<=[.?!])\s+/)
+          .filter((s: string) => s.trim().length > 0);
+
+        const matchingSentences = sentences.filter((s: string) => {
+          const lower = s.toLowerCase();
+          return keywords.some((kw) => lower.includes(kw));
+        });
+
+        const chosenSentences =
+          matchingSentences.length > 0 ? matchingSentences : sentences.slice(0, 2);
+        const excerpt = chosenSentences.join(" ");
+
+        answerParts.push(
+          `According to "${topChunk.chunk.heading}": ${excerpt}`
+        );
+        simplifiedSentence = chosenSentences[0] || excerpt;
+
+        citations.push({
+          chunkId: topChunk.chunk.id,
+          quotedEvidence: chosenSentences[0] || excerpt.slice(0, 180),
+        });
+      }
+
+      if (topSegment && topSegment.score > 0) {
+        citations.push({
+          transcriptSegmentId: topSegment.segment.id,
+          startSeconds: topSegment.segment.start,
+          endSeconds: topSegment.segment.end,
+          quotedEvidence: (topSegment.segment.text || "").slice(0, 180),
+        });
+      }
+
+      const fullAnswer =
+        answerParts.join(" ") || "Relevant information found in your lecture material.";
+
+      return {
+        answerId: `ans_local_${Date.now().toString(36)}`,
+        question,
+        answer: fullAnswer,
+        simplifiedAnswer: simplifiedSentence || fullAnswer,
+        confidence: "medium",
+        citations,
+        followUpQuestions: [
+          `Can you explain more about ${keywords[0] || "this topic"}?`,
+          "What are the key terms in this section?",
+          "How does this connect to the main idea?",
+        ],
+        fallbackUsed: true,
+      };
+    };
 
     const result = await withTimeoutFallback(primaryAI, fallbackGenerator, 12000);
     return NextResponse.json(result);

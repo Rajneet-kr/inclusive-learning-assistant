@@ -10,8 +10,8 @@ interface StudyPlanTimelineProps {
 
 export function StudyPlanTimeline({ studyPlan }: StudyPlanTimelineProps) {
   return (
-    <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
-      <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-6">
+    <div className="rounded-2xl bg-white/90 backdrop-blur-md border border-slate-200/80 p-6 shadow-sm">
+      <div className="flex items-center justify-between pb-4 border-b border-slate-200/80 mb-6">
         <div className="flex items-center gap-2">
           <Calendar className="w-5 h-5 text-indigo-600" />
           <h2 className="text-xl font-bold tracking-tight text-slate-900">
@@ -27,7 +27,7 @@ export function StudyPlanTimeline({ studyPlan }: StudyPlanTimelineProps) {
         {studyPlan.map((day) => (
           <div
             key={day.day}
-            className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition-colors"
+            className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/80 backdrop-blur-sm hover:bg-slate-50/95 transition-colors"
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-100/60 px-2 py-0.5 rounded">

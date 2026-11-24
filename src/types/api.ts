@@ -308,6 +308,7 @@ export interface TranslationResult {
   sections: TranslatedSimplifiedSection[];
   ttsVoiceAvailable: boolean;
   fallbackUsed: boolean;
+  provider?: string;
 }
 
 export type StemElementType =

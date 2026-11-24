@@ -107,4 +107,86 @@ export const TutorRequestSchema = z.object({
     .optional(),
 });
 
+export const StudyPackRequestSchema = z.object({
+  documentId: z.string().default("doc_live"),
+  title: z.string().default("Study Pack"),
+  language: z
+    .enum(["en", "hi", "kn", "ta", "te", "mr", "bn", "es", "fr", "de"])
+    .default("en"),
+  simplifiedSections: z
+    .array(
+      z.object({
+        chunkId: z.string(),
+        title: z.string(),
+        simpleText: z.string(),
+        keyIdea: z.string(),
+        jargon: z
+          .array(
+            z.object({
+              term: z.string(),
+              originalTerm: z.string().optional(),
+              plainMeaning: z.string(),
+            })
+          )
+          .default([]),
+        readingTimeSeconds: z.number().optional().default(60),
+      })
+    )
+    .default([]),
+  glossary: z
+    .array(
+      z.object({
+        term: z.string(),
+        plainMeaning: z.string(),
+        language: z.any().default("en"),
+        source: z
+          .enum(["document", "live_caption", "user_saved"])
+          .default("document"),
+        firstSeenAt: z.string().optional(),
+        documentId: z.string().optional(),
+      })
+    )
+    .default([]),
+  transcript: z
+    .object({
+      format: z.literal("vtt"),
+      content: z.string(),
+    })
+    .optional(),
+  flashcards: z
+    .array(
+      z.object({
+        id: z.string(),
+        front: z.string(),
+        back: z.string(),
+        concept: z.string().optional(),
+      })
+    )
+    .default([]),
+  quiz: z
+    .array(
+      z.object({
+        id: z.string(),
+        question: z.string(),
+        options: z.array(z.string()),
+        correctIndex: z.number(),
+        explanation: z.string(),
+      })
+    )
+    .default([]),
+  studyPlan: z
+    .array(
+      z.object({
+        day: z.number(),
+        title: z.string(),
+        tasks: z.array(z.string()),
+        estimatedMinutes: z.number(),
+      })
+    )
+    .default([]),
+  missingTerms: z.array(z.string()).optional(),
+  subject: z.string().optional().default("General"),
+});
+
+
 

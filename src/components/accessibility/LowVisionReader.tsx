@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { DocumentChunk, AccessibilitySettings, FocusSettings, DEFAULT_FOCUS_SETTINGS } from "@/types/api";
+import {
+  DocumentChunk,
+  AccessibilitySettings,
+  FocusSettings,
+  DEFAULT_FOCUS_SETTINGS,
+  SupportedLanguageCode,
+  TranslatedSimplifiedSection,
+} from "@/types/api";
 import {
   Eye,
   Volume2,
@@ -18,21 +25,49 @@ import { ReadingRuler } from "./ReadingRuler";
 import { LineFocusMask } from "./LineFocusMask";
 import { SyllableText } from "./SyllableText";
 
+const BCP47_LANGUAGE_MAP: Record<string, string> = {
+  hi: "hi-IN",
+  kn: "kn-IN",
+  ta: "ta-IN",
+  te: "te-IN",
+  mr: "mr-IN",
+  bn: "bn-IN",
+  es: "es-ES",
+  fr: "fr-FR",
+  de: "de-DE",
+  en: "en-US",
+};
+
 interface LowVisionReaderProps {
   chunks: DocumentChunk[];
   settings: AccessibilitySettings;
   onUpdateSettings: (settings: Partial<AccessibilitySettings>) => void;
+  translatedSections?: TranslatedSimplifiedSection[] | null;
+  language?: SupportedLanguageCode;
 }
 
 export function LowVisionReader({
   chunks,
   settings,
   onUpdateSettings,
+  translatedSections,
+  language,
 }: LowVisionReaderProps) {
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [isPaused, setIsPaused] = React.useState(false);
   const [speakingChunkIndex, setSpeakingChunkIndex] = React.useState<number | null>(null);
   const [spokenCharIndex, setSpokenCharIndex] = React.useState<number>(0);
+
+  const fallbackTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const boundaryFiredRef = React.useRef<boolean>(false);
+  const isPlayingRef = React.useRef<boolean>(false);
+
+  const clearFallbackTimer = React.useCallback(() => {
+    if (fallbackTimerRef.current) {
+      clearInterval(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+  }, []);
 
   const focus: FocusSettings = {
     ...DEFAULT_FOCUS_SETTINGS,
@@ -43,16 +78,37 @@ export function LowVisionReader({
     onUpdateSettings({ focus: { ...focus, ...newFocus } });
   };
 
+  const currentLang = language || settings.language || "en";
+  const bcp47Locale = BCP47_LANGUAGE_MAP[currentLang] || "en-US";
+
+  const displayItems = React.useMemo(() => {
+    if (translatedSections && translatedSections.length > 0) {
+      return translatedSections.map((ts, idx) => ({
+        id: ts.chunkId || `chunk_${idx + 1}`,
+        heading: ts.title,
+        text: ts.simpleText,
+        keyIdea: ts.keyIdea,
+      }));
+    }
+    return chunks.map((c, idx) => ({
+      id: c.id || `chunk_${idx + 1}`,
+      heading: c.heading,
+      text: c.text,
+      keyIdea: undefined as string | undefined,
+    }));
+  }, [chunks, translatedSections]);
+
   const utteranceRef = React.useRef<SpeechSynthesisUtterance | null>(null);
 
   // Stop synthesis on unmount
   React.useEffect(() => {
     return () => {
+      clearFallbackTimer();
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
     };
-  }, []);
+  }, [clearFallbackTimer]);
 
   const speakChunk = (chunkIndex: number, startFromBeginning = false) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
@@ -60,42 +116,102 @@ export function LowVisionReader({
       return;
     }
 
+    clearFallbackTimer();
     window.speechSynthesis.cancel();
 
-    if (chunkIndex >= chunks.length) {
+    if (chunkIndex >= displayItems.length) {
       setIsPlaying(false);
+      isPlayingRef.current = false;
       setIsPaused(false);
       setSpeakingChunkIndex(null);
       setSpokenCharIndex(0);
       return;
     }
 
-    const chunk = chunks[chunkIndex];
-    const textToSpeak = `${chunk.heading}. ${chunk.text}`;
+    const item = displayItems[chunkIndex];
+    const textToSpeak = `${item.heading}. ${item.text}`;
 
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
     utterance.rate = settings.ttsRate || 1.0;
     utterance.pitch = settings.ttsPitch || 1.0;
+    utterance.lang = bcp47Locale;
+
+    // Prefer local browser voice matching language for reliable onboundary firing
+    const voices = window.speechSynthesis.getVoices();
+    let voice = voices.find((v) => v.name === settings.ttsVoice);
+    if (!voice) {
+      const langPrefix = currentLang.toLowerCase();
+      voice =
+        voices.find((v) => v.lang.toLowerCase() === bcp47Locale.toLowerCase()) ||
+        voices.find((v) => v.lang.toLowerCase().replace(/_/g, "-").startsWith(langPrefix)) ||
+        (currentLang === "en"
+          ? voices.find((v) => v.localService && v.lang.toLowerCase().startsWith("en")) ||
+            voices.find((v) => v.lang.toLowerCase().startsWith("en")) ||
+            voices.find((v) => v.localService) ||
+            voices[0]
+          : voices.find((v) => v.localService) || voices[0]);
+    }
+    if (voice) {
+      utterance.voice = voice;
+    }
+
+    // Pre-calculate word offsets in textToSpeak
+    const wordOffsets: number[] = [];
+    const wordRegex = /\S+/g;
+    let matchExec: RegExpExecArray | null;
+    while ((matchExec = wordRegex.exec(textToSpeak)) !== null) {
+      wordOffsets.push(matchExec.index);
+    }
 
     utterance.onstart = () => {
       setIsPlaying(true);
+      isPlayingRef.current = true;
       setIsPaused(false);
       setSpeakingChunkIndex(chunkIndex);
       setSpokenCharIndex(0);
+      boundaryFiredRef.current = false;
+      clearFallbackTimer();
+
+      // Check after 400ms if onboundary fired; if not, advance smoothly via calibrated timer
+      setTimeout(() => {
+        if (!boundaryFiredRef.current && isPlayingRef.current) {
+          let wordIdx = 0;
+          const rate = settings.ttsRate || 1.0;
+          const intervalMs = Math.max(160, Math.round(360 / rate));
+
+          clearFallbackTimer();
+          fallbackTimerRef.current = setInterval(() => {
+            if (boundaryFiredRef.current) {
+              clearFallbackTimer();
+              return;
+            }
+            wordIdx++;
+            if (wordIdx < wordOffsets.length) {
+              setSpokenCharIndex(wordOffsets[wordIdx]);
+            } else {
+              clearFallbackTimer();
+            }
+          }, intervalMs);
+        }
+      }, 400);
     };
 
     utterance.onboundary = (event) => {
+      boundaryFiredRef.current = true;
+      clearFallbackTimer();
       if (event.name === "word" || event.name === "sentence") {
         setSpokenCharIndex(event.charIndex);
       }
     };
 
     utterance.onend = () => {
+      clearFallbackTimer();
       // If reading through all chunks, continue to next chunk
-      if (startFromBeginning && chunkIndex + 1 < chunks.length) {
+      if (startFromBeginning && chunkIndex + 1 < displayItems.length) {
         speakChunk(chunkIndex + 1, true);
       } else {
         setIsPlaying(false);
+        isPlayingRef.current = false;
         setIsPaused(false);
         setSpeakingChunkIndex(null);
         setSpokenCharIndex(0);
@@ -103,7 +219,9 @@ export function LowVisionReader({
     };
 
     utterance.onerror = () => {
+      clearFallbackTimer();
       setIsPlaying(false);
+      isPlayingRef.current = false;
       setIsPaused(false);
       setSpeakingChunkIndex(null);
       setSpokenCharIndex(0);
@@ -118,23 +236,28 @@ export function LowVisionReader({
       window.speechSynthesis.resume();
       setIsPaused(false);
       setIsPlaying(true);
+      isPlayingRef.current = true;
     } else {
       speakChunk(0, true);
     }
   };
 
   const handlePause = () => {
+    clearFallbackTimer();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.pause();
       setIsPaused(true);
       setIsPlaying(false);
+      isPlayingRef.current = false;
     }
   };
 
   const handleStop = () => {
+    clearFallbackTimer();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       setIsPlaying(false);
+      isPlayingRef.current = false;
       setIsPaused(false);
       setSpeakingChunkIndex(null);
       setSpokenCharIndex(0);
@@ -151,7 +274,7 @@ export function LowVisionReader({
 
   // Render text with word-level or sentence-level highlighting
   const renderHighlightedText = (text: string, isChunkActive: boolean) => {
-    if (!isChunkActive || spokenCharIndex <= 0) {
+    if (!isChunkActive) {
       if (focus.syllableBreakdown) {
         return <SyllableText text={text} enabled={true} />;
       }
@@ -165,19 +288,28 @@ export function LowVisionReader({
     const activeWord = match ? match[0] : "";
     const remaining = match ? after.slice(activeWord.length) : after;
 
+    const renderTextContent = (str: string) => {
+      if (focus.syllableBreakdown) {
+        return <SyllableText text={str} enabled={true} />;
+      }
+      return str;
+    };
+
     return (
       <span>
-        <span className="opacity-75">{before}</span>
-        <mark
-          className={`px-1 rounded font-black tracking-wide ${
-            settings.highContrast
-              ? "bg-yellow-400 text-black ring-4 ring-yellow-400"
-              : "bg-blue-600 text-white ring-4 ring-blue-500"
-          }`}
-        >
-          {activeWord}
-        </mark>
-        <span>{remaining}</span>
+        <span className="opacity-75">{renderTextContent(before)}</span>
+        {activeWord ? (
+          <mark
+            className={`px-1.5 py-0.5 rounded font-black tracking-wide inline-block ${
+              settings.highContrast
+                ? "bg-yellow-400 text-black ring-4 ring-yellow-400"
+                : "bg-blue-600 text-white ring-4 ring-blue-500"
+            }`}
+          >
+            {renderTextContent(activeWord)}
+          </mark>
+        ) : null}
+        <span>{renderTextContent(remaining)}</span>
       </span>
     );
   };
@@ -186,8 +318,8 @@ export function LowVisionReader({
     <div
       className={`rounded-2xl p-6 transition-all ${
         settings.highContrast
-          ? "bg-black text-yellow-300 border-2 border-yellow-300"
-          : "bg-white text-slate-900 border border-slate-200"
+          ? "bg-black/95 text-yellow-300 border-2 border-yellow-400 shadow-xl"
+          : "bg-white/95 backdrop-blur-md text-slate-900 border border-slate-200 shadow-sm"
       }`}
       style={{
         fontSize: `${settings.fontSize}px`,
@@ -330,14 +462,15 @@ export function LowVisionReader({
         <FocusToolbar
           focus={focus}
           onUpdateFocus={handleUpdateFocus}
+          highContrast={settings.highContrast}
         />
       </div>
 
-      {/* Chunks Display with Active Highlighting */}
+      {/* Sections Display with Active Highlighting */}
       <div className="space-y-8">
-        {chunks.map((chunk, idx) => {
+        {displayItems.map((item, idx) => {
           const isChunkActive = (isPlaying || isPaused) && speakingChunkIndex === idx;
-          const chunkIdentifier = chunk.id || `chunk_${idx + 1}`;
+          const chunkIdentifier = item.id || `chunk_${idx + 1}`;
 
           return (
             <article
@@ -349,16 +482,18 @@ export function LowVisionReader({
                   ? settings.highContrast
                     ? "border-yellow-400 bg-zinc-950 shadow-2xl ring-4 ring-yellow-400/30"
                     : "border-blue-600 bg-blue-50/70 shadow-lg ring-4 ring-blue-500/20"
-                  : "border-current bg-transparent"
+                  : settings.highContrast
+                    ? "border-current bg-transparent"
+                    : "border-slate-200 bg-white/95 backdrop-blur-sm"
               } target:ring-4 target:ring-yellow-400`}
             >
               <div className="flex flex-wrap items-center justify-between mb-4 gap-2">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-mono uppercase px-2 py-0.5 rounded border border-current font-bold">
-                    Chunk {idx + 1}
+                    Section {idx + 1}
                   </span>
                   <h3 className="font-black text-2xl tracking-wide">
-                    {chunk.heading}
+                    {item.heading}
                   </h3>
                 </div>
 
@@ -370,15 +505,29 @@ export function LowVisionReader({
                       ? "bg-yellow-400 text-black border-yellow-400 font-black shadow-sm"
                       : "hover:opacity-80"
                   }`}
-                  aria-label={`Read chunk ${idx + 1}: ${chunk.heading}`}
+                  aria-label={`Read section ${idx + 1}: ${item.heading}`}
                 >
                   <Volume2 className="w-4 h-4" />
                   {isChunkActive ? "Reading Now..." : "Read This Section"}
                 </button>
               </div>
 
+              {item.keyIdea && (
+                <div
+                  className={`mb-4 px-3.5 py-2 rounded-lg border-l-4 ${
+                    settings.highContrast
+                      ? "border-yellow-400 bg-zinc-900 text-yellow-200"
+                      : "border-amber-500 bg-amber-50/80 text-amber-950"
+                  }`}
+                >
+                  <p className="text-sm font-semibold">
+                    📌 Key Idea: {item.keyIdea}
+                  </p>
+                </div>
+              )}
+
               <div className="font-medium tracking-wide">
-                {renderHighlightedText(chunk.text, isChunkActive)}
+                {renderHighlightedText(item.text, isChunkActive)}
               </div>
             </article>
           );

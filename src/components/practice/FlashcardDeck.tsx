@@ -27,8 +27,8 @@ export function FlashcardDeck({ flashcards }: FlashcardDeckProps) {
   if (!card) return null;
 
   return (
-    <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
-      <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-6">
+    <div className="rounded-2xl bg-white/90 backdrop-blur-md border border-slate-200/80 p-6 shadow-sm">
+      <div className="flex items-center justify-between pb-4 border-b border-slate-200/80 mb-6">
         <span className="text-xs font-bold uppercase tracking-wider text-purple-600">
           Flashcard {index + 1} of {flashcards.length}
         </span>
@@ -48,7 +48,7 @@ export function FlashcardDeck({ flashcards }: FlashcardDeckProps) {
             setIsFlipped((prev) => !prev);
           }
         }}
-        className="min-h-[220px] cursor-pointer rounded-2xl border-2 border-dashed border-purple-300 bg-purple-50/50 hover:bg-purple-50 transition-all p-8 flex flex-col items-center justify-center text-center relative group select-none mb-6"
+        className="min-h-[220px] cursor-pointer rounded-2xl border-2 border-dashed border-purple-300/80 bg-purple-50/70 backdrop-blur-sm hover:bg-purple-50/90 transition-all p-8 flex flex-col items-center justify-center text-center relative group select-none mb-6"
       >
         <span className="text-xs uppercase tracking-widest font-bold text-purple-500 mb-3">
           {isFlipped ? "Answer / Explanation (Click to flip)" : "Question / Term (Click to flip)"}

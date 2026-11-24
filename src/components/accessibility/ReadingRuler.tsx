@@ -79,10 +79,11 @@ export function ReadingRuler({
       <div
         onMouseDown={() => setIsDragging(true)}
         onTouchStart={() => setIsDragging(true)}
-        className="absolute right-4 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-white/90 border border-amber-600/50 rounded-md text-[10px] font-bold text-amber-900 select-none flex items-center gap-1 shadow-xs"
+        title="Drag ruler up/down or press Up/Down arrow keys"
+        className="absolute right-0 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-l-lg border-l border-y border-amber-700 text-[10px] font-bold select-none flex items-center gap-1 shadow-md cursor-grab active:cursor-grabbing z-40"
       >
-        <GripHorizontal className="w-3.5 h-3.5 text-amber-700" />
-        <span>RULER &bull; DRAG OR ARROWS</span>
+        <GripHorizontal className="w-3.5 h-3.5 text-amber-200" />
+        <span>:: RULER</span>
       </div>
     </div>
   );

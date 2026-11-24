@@ -31,29 +31,29 @@
   --ring: #2563eb;
 }
 
-/* Accessibility Overlay Themes */
+/* Accessibility Overlay Themes (Frosted Pastel with Backdrop Blur) */
 .overlay-cream {
-  background-color: #fcf8f2 !important;
+  background-color: rgba(253, 251, 247, 0.90) !important;
   color: #1a1a1a !important;
 }
 
 .overlay-yellow {
-  background-color: #fefce8 !important;
+  background-color: rgba(254, 252, 232, 0.90) !important;
   color: #1c1917 !important;
 }
 
 .overlay-blue {
-  background-color: #f0f9ff !important;
+  background-color: rgba(240, 249, 255, 0.90) !important;
   color: #0f172a !important;
 }
 
 .overlay-peach {
-  background-color: #fff7ed !important;
+  background-color: rgba(255, 247, 237, 0.90) !important;
   color: #1c1917 !important;
 }
 
 .overlay-green {
-  background-color: #f0fdf4 !important;
+  background-color: rgba(240, 253, 244, 0.90) !important;
   color: #052e16 !important;
 }
 
@@ -93,4 +93,22 @@
 
 .skip-to-content:focus {
   top: 1rem;
+}
+
+/* Print Styles: Hide background layers & UI chrome for clean white-paper exports */
+@media print {
+  .global-wireframe-bg,
+  .global-scrim-overlay,
+  header,
+  footer,
+  aside,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
 }

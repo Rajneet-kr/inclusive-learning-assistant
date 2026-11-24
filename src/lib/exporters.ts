@@ -66,14 +66,15 @@ export function generateSelfContainedHtml(
           <h4>Key Vocabulary in this Section:</h4>
           <ul>
             ${sec.jargon
-              .map(
-                (j) =>
-                  `<li><strong>${escapeHtml(j.term)}${
-                    j.originalTerm && j.originalTerm !== j.term
-                      ? ` (${escapeHtml(j.originalTerm)})`
-                      : ""
-                  }:</strong> ${escapeHtml(j.plainMeaning)}</li>`
-              )
+              .map((j) => {
+                const original = (j.originalTerm || "").trim();
+                const showOriginal =
+                  original.length > 0 &&
+                  !j.term.toLowerCase().includes(original.toLowerCase());
+                return `<li><strong>${escapeHtml(j.term)}${
+                  showOriginal ? ` (${escapeHtml(original)})` : ""
+                }:</strong> ${escapeHtml(j.plainMeaning)}</li>`;
+              })
               .join("")}
           </ul>
         </div>
@@ -189,6 +190,18 @@ export function generateSelfContainedHtml(
         `
           )
           .join("\n")}
+      </div>
+    </section>
+  `
+      : "";
+
+  const transcriptHtml =
+    pack.transcript?.content
+      ? `
+    <section class="pack-section page-break">
+      <h2>Synchronized Lecture Transcript (${escapeHtml(pack.transcript.format.toUpperCase())})</h2>
+      <div class="transcript-box">
+        <pre class="transcript-content">${escapeHtml(pack.transcript.content)}</pre>
       </div>
     </section>
   `
@@ -344,6 +357,22 @@ export function generateSelfContainedHtml(
       padding: 16px;
       margin-bottom: 12px;
     }
+    .transcript-box {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+    .transcript-content {
+      font-family: inherit;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #334155;
+      margin: 0;
+    }
     footer {
       margin-top: 48px;
       padding-top: 16px;
@@ -360,11 +389,18 @@ export function generateSelfContainedHtml(
       }
       .page-break {
         page-break-before: always;
+        break-before: page;
       }
-      .study-card {
+      .study-card,
+      .glossary-item,
+      .quiz-item,
+      .flashcard,
+      .day-card,
+      .transcript-box {
         box-shadow: none;
         border: 1px solid #CCC;
         page-break-inside: avoid;
+        break-inside: avoid;
       }
     }
   </style>
@@ -389,6 +425,7 @@ export function generateSelfContainedHtml(
     ${quizHtml}
     ${flashcardsHtml}
     ${studyPlanHtml}
+    ${transcriptHtml}
   </main>
 
   <footer>

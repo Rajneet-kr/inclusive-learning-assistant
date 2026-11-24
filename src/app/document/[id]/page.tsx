@@ -1,6 +1,6 @@
-import Link from "next/link";
-import { StemVerbalizerPanel } from "@/components/stem/StemVerbalizerPanel";
-import { ArrowLeft, BookOpen } from "lucide-react";
+import { sampleBiologyNote, samplePracticePlan } from "@/lib/sampleData";
+import { OfflineStudyPack } from "@/types/api";
+import { DocumentWorkspaceClient } from "./DocumentWorkspaceClient";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -9,35 +9,42 @@ interface PageProps {
 export default async function DocumentPage({ params }: PageProps) {
   const { id } = await params;
 
-  return (
-    <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" /> Back to Dashboard
-            </Link>
-          </div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
-            Document Workspace: <span className="font-mono text-indigo-600">{id}</span>
-          </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Accessible STEM multimodal scan and diagram reasoning workspace.
-          </p>
-        </div>
+  const defaultPack: OfflineStudyPack = {
+    documentId: id,
+    title: `Document ${id} Study Pack`,
+    generatedAt: new Date().toISOString(),
+    language: "en",
+    simplifiedSections: sampleBiologyNote.simplifiedSections,
+    glossary: sampleBiologyNote.simplifiedSections.flatMap((s) =>
+      s.jargon.map((j) => ({
+        term: j.term,
+        plainMeaning: j.plainMeaning,
+        language: "en" as const,
+        source: "document" as const,
+        documentId: id,
+      }))
+    ),
+    flashcards: samplePracticePlan.flashcards.map((f) => ({
+      id: f.id,
+      front: f.front,
+      back: f.back,
+      concept: f.concept,
+    })),
+    quiz: samplePracticePlan.quiz.map((q) => ({
+      id: q.id,
+      question: q.question,
+      options: q.options,
+      correctIndex: q.correctIndex,
+      explanation: q.explanation,
+    })),
+    studyPlan: samplePracticePlan.studyPlan.map((p) => ({
+      day: p.day,
+      title: p.title,
+      tasks: p.tasks,
+      estimatedMinutes: p.estimatedMinutes,
+    })),
+  };
 
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 text-xs font-semibold shadow-xs transition-colors"
-        >
-          <BookOpen className="w-3.5 h-3.5" /> Return to Main Reader
-        </Link>
-      </div>
-
-      <StemVerbalizerPanel documentId={id} />
-    </main>
-  );
+  return <DocumentWorkspaceClient id={id} defaultPack={defaultPack} />;
 }
+

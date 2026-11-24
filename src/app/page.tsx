@@ -28,6 +28,7 @@ import { StudyPlanTimeline } from "@/components/practice/StudyPlanTimeline";
 import { UploadModal } from "@/components/upload/UploadModal";
 import { StemVerbalizerPanel } from "@/components/stem/StemVerbalizerPanel";
 import { TutorPanel } from "@/components/tutor/TutorPanel";
+import { StudyPackExporter } from "@/components/export/StudyPackExporter";
 import {
   sampleBiologyNote,
   sampleLectureTranscript,
@@ -40,6 +41,9 @@ import {
   TranslatedSimplifiedSection,
   SupportedLanguageCode,
   TranslationResult,
+  OfflineStudyPack,
+  GlossaryTerm,
+  AccessibilityProfile,
 } from "@/types/api";
 import { getLanguageOption, getTextDirection } from "@/lib/i18n";
 
@@ -59,6 +63,23 @@ export default function HomePage() {
 
   const isDistractionFree = settings.focus?.mode === "distraction_free";
 
+  // Dynamic mode-adaptive scrim background color
+  const scrimBgColor = React.useMemo(() => {
+    if (isDistractionFree) {
+      return settings.highContrast || settings.profile === "low_vision"
+        ? "rgba(0, 0, 0, 0.96)"
+        : "rgba(253, 251, 247, 0.94)";
+    }
+    if (settings.highContrast || settings.profile === "low_vision") {
+      return "rgba(0, 0, 0, 0.90)";
+    }
+    if (settings.profile === "hearing" || activeTab === "hearing") {
+      return "rgba(241, 245, 249, 0.70)";
+    }
+    // Dyslexia & standard
+    return "rgba(253, 251, 247, 0.72)";
+  }, [isDistractionFree, settings.highContrast, settings.profile, activeTab]);
+
   // Escape key shortcut to exit distraction-free focus mode
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -76,11 +97,103 @@ export default function HomePage() {
   const [practicePlan, setPracticePlan] = React.useState<PracticeResponse>(samplePracticePlan);
   const [transcript, setTranscript] = React.useState<TranscribeResponse>(sampleLectureTranscript);
   const [translatedSections, setTranslatedSections] = React.useState<TranslatedSimplifiedSection[] | null>(null);
+  const [translationCache, setTranslationCache] = React.useState<Record<string, TranslatedSimplifiedSection[]>>({});
   const [isTranslating, setIsTranslating] = React.useState(false);
+  const [translationFallbackUsed, setTranslationFallbackUsed] = React.useState(false);
   const [statusNotice, setStatusNotice] = React.useState<{
     message: string;
     type: "live" | "fallback";
   } | null>(null);
+
+  const currentStudyPack = React.useMemo<OfflineStudyPack>(() => {
+    const title = loadedNote?.title || "Inclusive Learning Study Pack";
+    const docId = loadedNote?.documentId || "doc_sample_01";
+    const language = (settings.language || "en") as SupportedLanguageCode;
+    const sections = (translatedSections || loadedNote?.simplifiedSections || []) as TranslatedSimplifiedSection[];
+
+    const glossaryMap = new Map<string, GlossaryTerm>();
+    sections.forEach((sec) => {
+      sec.jargon?.forEach((j) => {
+        const key = j.term.trim().toLowerCase();
+        if (key && !glossaryMap.has(key)) {
+          glossaryMap.set(key, {
+            term: j.term,
+            plainMeaning: j.plainMeaning,
+            language,
+            source: "document",
+            documentId: docId,
+          });
+        }
+      });
+    });
+
+    transcript.keyConcepts?.forEach((kc) => {
+      const key = kc.title.trim().toLowerCase();
+      if (key && !glossaryMap.has(key)) {
+        glossaryMap.set(key, {
+          term: kc.title,
+          plainMeaning: kc.explanation,
+          language,
+          source: "document",
+          documentId: docId,
+        });
+      }
+    });
+
+    const flashcards = practicePlan.flashcards.map((f) => ({
+      id: f.id,
+      front: f.front,
+      back: f.back,
+      concept: f.concept,
+    }));
+
+    const quiz = practicePlan.quiz.map((q) => ({
+      id: q.id,
+      question: q.question,
+      options: q.options,
+      correctIndex: q.correctIndex,
+      explanation: q.explanation,
+    }));
+
+    const studyPlan = practicePlan.studyPlan.map((p) => ({
+      day: p.day,
+      title: p.title,
+      tasks: p.tasks,
+      estimatedMinutes: p.estimatedMinutes,
+    }));
+
+    let transcriptObj: { format: "vtt"; content: string } | undefined = undefined;
+    if (transcript?.segments && transcript.segments.length > 0) {
+      const vttLines = ["WEBVTT\n"];
+      transcript.segments.forEach((s) => {
+        const formatTime = (sec: number) => {
+          const m = Math.floor(sec / 60)
+            .toString()
+            .padStart(2, "0");
+          const sRem = (sec % 60).toFixed(3).padStart(6, "0");
+          return `00:${m}:${sRem}`;
+        };
+        vttLines.push(`${s.id}\n${formatTime(s.start)} --> ${formatTime(s.end)}\n${s.text}\n`);
+      });
+      transcriptObj = {
+        format: "vtt",
+        content: vttLines.join("\n"),
+      };
+    }
+
+    return {
+      documentId: docId,
+      title,
+      generatedAt: new Date().toISOString(),
+      language,
+      simplifiedSections: sections,
+      glossary: Array.from(glossaryMap.values()),
+      transcript: transcriptObj,
+      flashcards,
+      quiz,
+      studyPlan,
+    };
+  }, [loadedNote, translatedSections, settings.language, practicePlan, transcript]);
 
   const handleNavigateToChunk = (chunkId: string) => {
     // If not in a reading tab, switch to active profile's reading tab
@@ -115,58 +228,52 @@ export default function HomePage() {
     }, 150);
   };
 
-  // Sync activeTab with accessibility profile selection
+  // Sync activeTab with accessibility profile selection only when a document is loaded
+  // and the user is currently on a reading tab (preserving active STEM or Practice workspaces)
   React.useEffect(() => {
-    if (settings.profile === "dyslexia") setActiveTab("dyslexia");
-    else if (settings.profile === "low_vision") setActiveTab("low_vision");
-    else if (settings.profile === "hearing") setActiveTab("hearing");
-  }, [settings.profile]);
+    // If user is currently working in STEM or Practice decks, keep their workspace intact
+    if (activeTab === "stem" || activeTab === "practice") {
+      return;
+    }
+
+    // Only switch reading tabs when a document is loaded
+    if (loadedNote && (activeTab === "dyslexia" || activeTab === "low_vision" || activeTab === "hearing")) {
+      if (settings.profile === "dyslexia") setActiveTab("dyslexia");
+      else if (settings.profile === "low_vision") setActiveTab("low_vision");
+      else if (settings.profile === "hearing") setActiveTab("hearing");
+    }
+  }, [settings.profile, loadedNote, activeTab]);
+
+  const handleProfileChange = React.useCallback(
+    (newProfile: AccessibilityProfile) => {
+      setProfile(newProfile);
+      // If a document is loaded and user is currently on one of the 3 reading tabs, switch tab to match
+      if (loadedNote && (activeTab === "dyslexia" || activeTab === "low_vision" || activeTab === "hearing")) {
+        if (newProfile === "dyslexia") setActiveTab("dyslexia");
+        else if (newProfile === "low_vision") setActiveTab("low_vision");
+        else if (newProfile === "hearing") setActiveTab("hearing");
+      }
+      // If activeTab is "stem" or "practice", keep activeTab unchanged!
+    },
+    [setProfile, loadedNote, activeTab]
+  );
 
   const fetchTranslationForNote = React.useCallback(
     async (note: SampleBiologyNote, lang: SupportedLanguageCode) => {
       if (lang === "en") {
         setTranslatedSections(null);
+        setTranslationFallbackUsed(false);
         return;
       }
 
-      // Check offline sample fixtures for biology note
-      if (note.documentId === "doc_bio_sample_01") {
-        if (lang === "hi") {
-          try {
-            const res = await fetch("/samples/biology-notes-hi.json");
-            if (res.ok) {
-              const data = await res.json();
-              setTranslatedSections(data.sections);
-              setStatusNotice({
-                message: "Loaded pre-translated Hindi sample note (offline safe).",
-                type: "fallback",
-              });
-              setTimeout(() => setStatusNotice(null), 5000);
-              return;
-            }
-          } catch (err) {
-            console.warn("Failed to load offline Hindi fixture:", err);
-          }
-        } else if (lang === "es") {
-          try {
-            const res = await fetch("/samples/biology-notes-es.json");
-            if (res.ok) {
-              const data = await res.json();
-              setTranslatedSections(data.sections);
-              setStatusNotice({
-                message: "Loaded pre-translated Spanish sample note (offline safe).",
-                type: "fallback",
-              });
-              setTimeout(() => setStatusNotice(null), 5000);
-              return;
-            }
-          } catch (err) {
-            console.warn("Failed to load offline Spanish fixture:", err);
-          }
-        }
+      const cacheKey = `${note.documentId}::${lang}`;
+      if (translationCache[cacheKey]) {
+        setTranslatedSections(translationCache[cacheKey]);
+        setTranslationFallbackUsed(false);
+        return;
       }
 
-      // Live translation API call
+      // Route all documents through /api/translate
       setIsTranslating(true);
       try {
         const langOption = getLanguageOption(lang);
@@ -182,25 +289,62 @@ export default function HomePage() {
 
         if (res.ok) {
           const result: TranslationResult = await res.json();
-          setTranslatedSections(result.sections);
-          setStatusNotice({
-            message: result.fallbackUsed
-              ? `Translation returned fallback text (safeguard active).`
-              : `Successfully translated into ${langOption.nativeLabel} (${langOption.label})!`,
-            type: result.fallbackUsed ? "fallback" : "live",
-          });
-        } else {
-          setTranslatedSections(null);
+          if (!result.fallbackUsed && result.sections && result.sections.length > 0) {
+            setTranslatedSections(result.sections);
+            setTranslationFallbackUsed(false);
+            setTranslationCache((prev) => ({ ...prev, [cacheKey]: result.sections }));
+            setStatusNotice({
+              message: `Successfully translated into ${langOption.nativeLabel} (${langOption.label})!`,
+              type: "live",
+            });
+            return;
+          }
         }
+
+        // If /api/translate returned fallbackUsed or failed, check offline sample fixtures for sample note
+        if (note.documentId === "doc_bio_sample_01") {
+          let fixtureFile = "";
+          if (lang === "hi") fixtureFile = "/samples/biology-notes-hi.json";
+          else if (lang === "es") fixtureFile = "/samples/biology-notes-es.json";
+          else if (lang === "kn") fixtureFile = "/samples/biology-notes-kn.json";
+
+          if (fixtureFile) {
+            try {
+              const fixtureRes = await fetch(fixtureFile);
+              if (fixtureRes.ok) {
+                const fixtureData = await fixtureRes.json();
+                setTranslatedSections(fixtureData.sections);
+                setTranslationFallbackUsed(false);
+                setTranslationCache((prev) => ({ ...prev, [cacheKey]: fixtureData.sections }));
+                setStatusNotice({
+                  message: `Loaded offline pre-translated sample note (${langOption.nativeLabel}).`,
+                  type: "fallback",
+                });
+                return;
+              }
+            } catch (err) {
+              console.warn("Failed to load offline fixture:", err);
+            }
+          }
+        }
+
+        // True offline fallback: English
+        setTranslatedSections(null);
+        setTranslationFallbackUsed(true);
+        setStatusNotice({
+          message: `Live translation server is currently busy. Showing English fallback.`,
+          type: "fallback",
+        });
       } catch (err) {
         console.error("Translation request failed:", err);
         setTranslatedSections(null);
+        setTranslationFallbackUsed(true);
       } finally {
         setIsTranslating(false);
         setTimeout(() => setStatusNotice(null), 5000);
       }
     },
-    []
+    [translationCache]
   );
 
   const handleLanguageChange = (newLang: SupportedLanguageCode) => {
@@ -233,6 +377,10 @@ export default function HomePage() {
     practice?: PracticeResponse;
     transcript?: TranscribeResponse;
   }) => {
+    // 0. Reset translation cache and state for new document
+    setTranslationCache({});
+    setTranslatedSections(null);
+
     // 1. Fully replace current document note state
     setLoadedNote(data.note);
     const lang = settings.language || "en";
@@ -338,31 +486,51 @@ export default function HomePage() {
 
   return (
     <div
-      className={`min-h-screen ${
+      className={`min-h-screen w-full flex flex-col relative transition-colors ${
         settings.highContrast
-          ? "bg-black text-yellow-300"
-          : "bg-slate-50 text-slate-900"
+          ? "text-yellow-300"
+          : "text-slate-900"
       }`}
     >
+      {/* Global Fixed AVIF Wireframe Background Layer */}
+      <div
+        aria-hidden="true"
+        className="global-wireframe-bg fixed inset-0 -z-20 bg-cover bg-center bg-no-repeat pointer-events-none"
+        style={{ backgroundImage: "url('/images/wireframe-bg.avif')" }}
+      />
+
+      {/* Dynamic Mode-Adaptive Scrim Overlay */}
+      <div
+        aria-hidden="true"
+        className={`global-scrim-overlay fixed inset-0 -z-10 pointer-events-none transition-colors duration-300 ${
+          isDistractionFree || settings.highContrast || settings.profile === "low_vision"
+            ? ""
+            : "backdrop-blur-[2px]"
+        }`}
+        style={{ backgroundColor: scrimBgColor }}
+      />
+
       {/* Distraction-Free Sticky Bar for ADHD & Neurodivergent Focus */}
       {isDistractionFree && (
-        <div className="sticky top-0 z-50 bg-indigo-950 text-white px-4 py-2.5 flex items-center justify-between shadow-md border-b border-indigo-800">
-          <div className="flex items-center gap-2">
-            <Maximize2 className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-bold uppercase tracking-wider">
-              Distraction-Free Focus Mode Active
-            </span>
-            <span className="text-xs text-indigo-300 hidden sm:inline">
-              (Press Escape or click exit)
-            </span>
+        <div className="sticky top-0 z-50 bg-indigo-950 text-white shadow-md border-b border-indigo-800 w-full">
+          <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Maximize2 className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-bold uppercase tracking-wider">
+                Distraction-Free Focus Mode Active
+              </span>
+              <span className="text-xs text-indigo-300 hidden sm:inline">
+                (Press Escape or click exit)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => updateFocusSettings({ mode: "off" })}
+              className="px-3 py-1 bg-white text-indigo-950 hover:bg-indigo-50 font-bold text-xs rounded-lg transition-colors shadow-xs"
+            >
+              Exit Distraction-Free (Esc)
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => updateFocusSettings({ mode: "off" })}
-            className="px-3 py-1 bg-white text-indigo-950 hover:bg-indigo-50 font-bold text-xs rounded-lg transition-colors shadow-xs"
-          >
-            Exit Distraction-Free (Esc)
-          </button>
         </div>
       )}
 
@@ -371,9 +539,9 @@ export default function HomePage() {
         <header
           className={`border-b ${
             settings.highContrast
-              ? "border-yellow-300 bg-black"
-              : "border-slate-200 bg-white"
-          } sticky top-0 z-40`}
+              ? "border-yellow-400 bg-black/95 text-yellow-300"
+              : "border-slate-200/80 bg-white/90 backdrop-blur-md text-slate-900 shadow-xs"
+          } sticky top-0 z-40 w-full transition-colors`}
         >
           <div className="max-w-6xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -397,7 +565,11 @@ export default function HomePage() {
 
             <div className="flex items-center gap-3">
               {/* Quick Profile Pill */}
-              <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 capitalize flex items-center gap-1.5">
+              <span className={`text-xs font-semibold px-3 py-1.5 rounded-lg capitalize flex items-center gap-1.5 ${
+                settings.highContrast
+                  ? "bg-zinc-900 text-yellow-300 border border-yellow-400"
+                  : "bg-slate-100/90 text-slate-700 border border-slate-200/60"
+              }`}>
                 Profile: <strong>{settings.profile.replace("_", " ")}</strong>
               </span>
             </div>
@@ -405,12 +577,16 @@ export default function HomePage() {
         </header>
       )}
 
-      <main id="main-content" className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+      <main id="main-content" className="max-w-6xl mx-auto px-4 py-8 space-y-8 w-full flex-1">
         {/* Hero Section with 1-Click "Load Sample Note" Button (hidden in distraction-free mode) */}
         {!isDistractionFree && (
           <section
             aria-label="Demo Action Banner"
-            className="rounded-3xl bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-900 text-white p-8 shadow-md relative overflow-hidden"
+            className={`rounded-3xl p-8 shadow-md relative overflow-hidden transition-all ${
+              settings.highContrast
+                ? "bg-black/95 text-yellow-300 border-2 border-yellow-400"
+                : "bg-gradient-to-br from-slate-950/85 via-blue-950/80 to-cyan-950/80 backdrop-blur-md text-white border border-cyan-400/25 shadow-lg"
+            }`}
           >
             <div className="relative z-10 max-w-2xl">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-semibold mb-4 backdrop-blur-xs">
@@ -427,7 +603,11 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={handleLoadSample}
-                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-white text-blue-900 font-bold text-base hover:bg-blue-50 shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
+                  className={`inline-flex items-center gap-2 px-6 py-3.5 rounded-xl font-bold text-base shadow-md hover:shadow-lg transition-all active:scale-[0.98] ${
+                    settings.highContrast
+                      ? "bg-yellow-400 text-black hover:bg-yellow-300 border-2 border-yellow-400"
+                      : "bg-white/95 text-blue-950 hover:bg-white backdrop-blur-sm"
+                  }`}
                 >
                   <Sparkles className="w-5 h-5 text-amber-500" />
                   ⚡ 1-Click Load Sample Biology Note
@@ -436,7 +616,11 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => setIsUploadModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-blue-800/80 hover:bg-blue-800 text-white font-semibold text-base border border-blue-400/30 transition-colors"
+                  className={`inline-flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold text-base transition-colors ${
+                    settings.highContrast
+                      ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border-2 border-yellow-400"
+                      : "bg-blue-800/80 hover:bg-blue-800 text-white border border-blue-400/30 backdrop-blur-sm"
+                  }`}
                 >
                   <Upload className="w-4 h-4 text-blue-200" /> Upload or Paste Text
                 </button>
@@ -444,7 +628,11 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => setActiveTab("stem")}
-                  className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-indigo-900/80 hover:bg-indigo-900 text-white font-semibold text-base border border-indigo-400/30 transition-colors"
+                  className={`inline-flex items-center gap-2 px-5 py-3.5 rounded-xl font-semibold text-base transition-colors ${
+                    settings.highContrast
+                      ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border-2 border-yellow-400"
+                      : "bg-indigo-900/80 hover:bg-indigo-900 text-white border border-indigo-400/30 backdrop-blur-sm"
+                  }`}
                 >
                   <Binary className="w-4 h-4 text-indigo-300" /> 📐 STEM Verbalizer
                 </button>
@@ -460,10 +648,12 @@ export default function HomePage() {
         {!isDistractionFree && statusNotice && (
           <div
             role="status"
-            className={`p-4 rounded-xl border flex items-center justify-between shadow-xs animate-in fade-in ${
-              statusNotice.type === "live"
-                ? "bg-blue-50 border-blue-200 text-blue-950"
-                : "bg-emerald-50 border-emerald-200 text-emerald-950"
+            className={`p-4 rounded-xl border flex items-center justify-between shadow-xs animate-in fade-in backdrop-blur-md ${
+              settings.highContrast
+                ? "bg-black/95 border-2 border-yellow-400 text-yellow-300"
+                : statusNotice.type === "live"
+                ? "bg-blue-50/90 border-blue-200/80 text-blue-950"
+                : "bg-emerald-50/90 border-emerald-200/80 text-emerald-950"
             }`}
           >
             <div className="flex items-center gap-2">
@@ -480,7 +670,7 @@ export default function HomePage() {
         {!isDistractionFree && (
           <AccessibilityToolbar
             settings={settings}
-            onProfileChange={setProfile}
+            onProfileChange={handleProfileChange}
             onUpdateSettings={updateSettings}
             onReset={resetSettings}
             onLanguageChange={handleLanguageChange}
@@ -491,48 +681,84 @@ export default function HomePage() {
         {/* If active tab is STEM verbalizer, render it directly even if no document is loaded */}
         {activeTab === "stem" && !loadedNote ? (
           <div className="space-y-6">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <h2 className="text-xl font-bold text-slate-800">STEM &amp; Diagram Verbalizer Workspace</h2>
+            <div className={`flex items-center justify-between pb-2 border-b ${
+              settings.highContrast ? "border-yellow-400" : "border-slate-200"
+            }`}>
+              <h2 className={`text-xl font-bold ${
+                settings.highContrast ? "text-yellow-300" : "text-slate-800"
+              }`}>
+                STEM &amp; Diagram Verbalizer Workspace
+              </h2>
               <button
                 type="button"
                 onClick={handleLoadSample}
-                className="text-xs text-blue-600 hover:underline font-semibold"
+                className={`text-xs font-semibold hover:underline ${
+                  settings.highContrast
+                    ? "text-yellow-400 hover:text-yellow-200"
+                    : "text-blue-600 hover:text-blue-800"
+                }`}
               >
                 &larr; Load Sample Biology Note for Reading Tabs
               </button>
             </div>
-            <StemVerbalizerPanel settings={settings} documentId="stem_quick_start" />
+            <StemVerbalizerPanel
+              settings={settings}
+              highContrast={settings.highContrast}
+              documentId="stem_quick_start"
+            />
           </div>
         ) : !loadedNote ? (
-          <div className="rounded-2xl border-2 border-dashed border-slate-300 p-12 text-center bg-white shadow-xs">
-            <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
+          <div className={`rounded-2xl border-2 border-dashed p-12 text-center shadow-xs transition-all ${
+            settings.highContrast
+              ? "bg-black/95 border-yellow-400 text-yellow-300"
+              : "bg-white/90 backdrop-blur-md border-slate-300/80 text-slate-900"
+          }`}>
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${
+              settings.highContrast
+                ? "bg-zinc-900 text-yellow-300 border border-yellow-400"
+                : "bg-blue-50 text-blue-600"
+            }`}>
               <BookOpen className="w-7 h-7" />
             </div>
-            <h3 className="text-xl font-bold text-slate-900 mb-2">
+            <h3 className="text-xl font-bold mb-2">
               No Document Loaded Yet
             </h3>
-            <p className="text-slate-600 max-w-md mx-auto text-sm mb-6">
+            <p className={`max-w-md mx-auto text-sm mb-6 ${
+              settings.highContrast ? "text-yellow-200/80" : "text-slate-600"
+            }`}>
               Click the button below to load our prepared sample note on <strong>Photosynthesis</strong>, click <strong>Upload or Paste Text</strong> to process your own materials, or test the <strong>STEM Verbalizer</strong> directly.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
               <button
                 type="button"
                 onClick={handleLoadSample}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-sm transition-all"
+                className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold shadow-sm transition-all ${
+                  settings.highContrast
+                    ? "bg-yellow-400 text-black hover:bg-yellow-300 border-2 border-yellow-400"
+                    : "bg-blue-600 text-white hover:bg-blue-700"
+                }`}
               >
                 <Sparkles className="w-4 h-4 text-amber-300" /> Load Sample Biology Note
               </button>
               <button
                 type="button"
                 onClick={() => setIsUploadModalOpen(true)}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-300 font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                className={`inline-flex items-center gap-2 px-5 py-3 rounded-xl font-semibold transition-colors ${
+                  settings.highContrast
+                    ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border-2 border-yellow-400"
+                    : "border border-slate-300 bg-white/80 backdrop-blur-sm text-slate-700 hover:bg-white"
+                }`}
               >
                 <Upload className="w-4 h-4" /> Upload Custom Notes
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab("stem")}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-indigo-50 border border-indigo-200 font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+                className={`inline-flex items-center gap-2 px-5 py-3 rounded-xl font-semibold transition-colors ${
+                  settings.highContrast
+                    ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border-2 border-yellow-400"
+                    : "bg-indigo-50/90 border border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                }`}
               >
                 <Binary className="w-4 h-4 text-indigo-600" /> Open STEM Verbalizer
               </button>
@@ -541,32 +767,53 @@ export default function HomePage() {
         ) : (
           <div className="space-y-6">
             {/* Note Meta Header */}
-            <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-xs flex flex-wrap items-center justify-between gap-4">
+            <div className={`rounded-2xl p-6 shadow-xs flex flex-wrap items-center justify-between gap-4 transition-all ${
+              settings.highContrast
+                ? "bg-black/95 border-2 border-yellow-400 text-yellow-300"
+                : "bg-white/90 backdrop-blur-md border border-slate-200/80 text-slate-900"
+            }`}>
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full">
+                  <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                    settings.highContrast
+                      ? "bg-zinc-900 text-yellow-300 border border-yellow-400"
+                      : "text-blue-600 bg-blue-50"
+                  }`}>
                     {loadedNote.subject || "General"} &bull; {loadedNote.gradeLevel || "Grade 10"}
                   </span>
-                  <span className="text-xs text-slate-500 font-mono">
+                  <span className={`text-xs font-mono ${
+                    settings.highContrast ? "text-yellow-400/80" : "text-slate-500"
+                  }`}>
                     ID: {loadedNote.documentId}
                   </span>
                 </div>
-                <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                <h2 className="text-2xl font-extrabold tracking-tight">
                   {loadedNote.title}
                 </h2>
-                <p className="text-sm text-slate-600 mt-1 max-w-2xl">
+                <p className={`text-sm mt-1 max-w-2xl ${
+                  settings.highContrast ? "text-yellow-200/80" : "text-slate-600"
+                }`}>
                   {loadedNote.sourceSummary}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 font-semibold">
+              <div className="flex flex-wrap items-center gap-2">
+                <StudyPackExporter pack={currentStudyPack} />
+                <span className={`text-xs px-3 py-1.5 rounded-lg font-semibold ${
+                  settings.highContrast
+                    ? "bg-zinc-900 text-yellow-300 border border-yellow-400"
+                    : "bg-slate-100/90 text-slate-700"
+                }`}>
                   {loadedNote.chunks.length} Chunks Generated
                 </span>
                 <span
                   className={`text-xs px-3 py-1.5 rounded-lg font-semibold border ${
                     loadedNote.fallbackUsed
-                      ? "bg-amber-50 text-amber-900 border-amber-200"
+                      ? settings.highContrast
+                        ? "bg-amber-950 text-amber-300 border-amber-400"
+                        : "bg-amber-50 text-amber-900 border-amber-200"
+                      : settings.highContrast
+                      ? "bg-emerald-950 text-emerald-300 border-emerald-400"
                       : "bg-emerald-50 text-emerald-900 border-emerald-200"
                   }`}
                 >
@@ -579,7 +826,7 @@ export default function HomePage() {
             <nav
               role="tablist"
               aria-label="Note View Modes"
-              className="flex flex-wrap gap-2 border-b border-slate-200 pb-2"
+              className="flex flex-wrap gap-2 border-b border-slate-200/80 pb-2"
             >
               <button
                 type="button"
@@ -588,8 +835,12 @@ export default function HomePage() {
                 onClick={() => setActiveTab("dyslexia")}
                 className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
                   activeTab === "dyslexia"
-                    ? "bg-amber-500 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    ? settings.highContrast
+                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400"
+                      : "bg-amber-500 text-white shadow-sm"
+                    : settings.highContrast
+                    ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border border-yellow-400"
+                    : "bg-white/80 backdrop-blur-sm text-slate-700 hover:bg-white/95 border border-slate-200/60"
                 }`}
               >
                 <BookOpen className="w-4 h-4" />
@@ -603,8 +854,12 @@ export default function HomePage() {
                 onClick={() => setActiveTab("low_vision")}
                 className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
                   activeTab === "low_vision"
-                    ? "bg-indigo-600 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    ? settings.highContrast
+                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400"
+                      : "bg-indigo-600 text-white shadow-sm"
+                    : settings.highContrast
+                    ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border border-yellow-400"
+                    : "bg-white/80 backdrop-blur-sm text-slate-700 hover:bg-white/95 border border-slate-200/60"
                 }`}
               >
                 <Eye className="w-4 h-4" />
@@ -618,8 +873,12 @@ export default function HomePage() {
                 onClick={() => setActiveTab("hearing")}
                 className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
                   activeTab === "hearing"
-                    ? "bg-emerald-600 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    ? settings.highContrast
+                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400"
+                      : "bg-emerald-600 text-white shadow-sm"
+                    : settings.highContrast
+                    ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border border-yellow-400"
+                    : "bg-white/80 backdrop-blur-sm text-slate-700 hover:bg-white/95 border border-slate-200/60"
                 }`}
               >
                 <Ear className="w-4 h-4" />
@@ -633,8 +892,12 @@ export default function HomePage() {
                 onClick={() => setActiveTab("practice")}
                 className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
                   activeTab === "practice"
-                    ? "bg-purple-600 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    ? settings.highContrast
+                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400"
+                      : "bg-purple-600 text-white shadow-sm"
+                    : settings.highContrast
+                    ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border border-yellow-400"
+                    : "bg-white/80 backdrop-blur-sm text-slate-700 hover:bg-white/95 border border-slate-200/60"
                 }`}
               >
                 <Sparkles className="w-4 h-4" />
@@ -648,8 +911,12 @@ export default function HomePage() {
                 onClick={() => setActiveTab("stem")}
                 className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
                   activeTab === "stem"
-                    ? "bg-indigo-600 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    ? settings.highContrast
+                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400"
+                      : "bg-indigo-600 text-white shadow-sm"
+                    : settings.highContrast
+                    ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border border-yellow-400"
+                    : "bg-white/80 backdrop-blur-sm text-slate-700 hover:bg-white/95 border border-slate-200/60"
                 }`}
               >
                 <Binary className="w-4 h-4" />
@@ -665,6 +932,12 @@ export default function HomePage() {
                 language={settings.language || "en"}
                 direction={getTextDirection(settings.language || "en")}
                 onUpdateSettings={updateSettings}
+                translationFallbackUsed={translationFallbackUsed}
+                onRetryTranslation={() =>
+                  loadedNote &&
+                  fetchTranslationForNote(loadedNote, settings.language || "en")
+                }
+                isTranslating={isTranslating}
               />
             )}
 
@@ -673,13 +946,18 @@ export default function HomePage() {
                 chunks={loadedNote.chunks}
                 settings={settings}
                 onUpdateSettings={updateSettings}
+                translatedSections={translatedSections}
+                language={settings.language || "en"}
               />
             )}
 
             {activeTab === "hearing" && (
               <div className="space-y-6">
-                <CaptionPanel />
-                <TranscriptViewer transcript={transcript} />
+                <CaptionPanel glossary={currentStudyPack.glossary} />
+                <TranscriptViewer
+                  transcript={transcript}
+                  glossary={currentStudyPack.glossary}
+                />
               </div>
             )}
 
@@ -696,6 +974,7 @@ export default function HomePage() {
             {activeTab === "stem" && (
               <StemVerbalizerPanel
                 settings={settings}
+                highContrast={settings.highContrast}
                 documentId={loadedNote.documentId}
               />
             )}
@@ -740,8 +1019,14 @@ export default function HomePage() {
 
       {/* Footer (hidden in distraction-free mode) */}
       {!isDistractionFree && (
-        <footer className="border-t border-slate-200 py-6 mt-16 text-center text-xs text-slate-500">
-          <p>Inclusive Learning Assistant &bull; Built for Accessibility &bull; Offline Fallback Ready</p>
+        <footer className={`border-t py-6 mt-16 text-center text-xs w-full transition-colors ${
+          settings.highContrast
+            ? "border-yellow-400 bg-black/95 text-yellow-300"
+            : "border-slate-200/80 bg-white/90 backdrop-blur-md text-slate-500"
+        }`}>
+          <div className="max-w-6xl mx-auto px-4">
+            <p>Inclusive Learning Assistant &bull; Built for Accessibility &bull; Offline Fallback Ready</p>
+          </div>
         </footer>
       )}
     </div>

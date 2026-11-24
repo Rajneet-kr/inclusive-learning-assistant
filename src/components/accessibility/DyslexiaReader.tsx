@@ -10,7 +10,7 @@ import {
   FocusSettings,
   DEFAULT_FOCUS_SETTINGS,
 } from "@/types/api";
-import { BookOpen, HelpCircle, VolumeX, Globe } from "lucide-react";
+import { BookOpen, HelpCircle, VolumeX, Globe, AlertTriangle, RefreshCw } from "lucide-react";
 import { getLanguageOption, getTextDirection, checkBrowserTtsVoiceAvailable } from "@/lib/i18n";
 import { FocusToolbar } from "./FocusToolbar";
 import { ReadingRuler } from "./ReadingRuler";
@@ -25,6 +25,9 @@ interface DyslexiaReaderProps {
   language?: SupportedLanguageCode;
   direction?: TextDirection;
   onUpdateSettings?: (settings: Partial<AccessibilitySettings>) => void;
+  translationFallbackUsed?: boolean;
+  onRetryTranslation?: () => void;
+  isTranslating?: boolean;
 }
 
 // Client-side Bionic Reading helper: bold the first 40-50% of each word
@@ -56,6 +59,9 @@ export function DyslexiaReader({
   language = "en",
   direction,
   onUpdateSettings,
+  translationFallbackUsed = false,
+  onRetryTranslation,
+  isTranslating = false,
 }: DyslexiaReaderProps) {
   const currentLang = language || settings.language || "en";
   const currentDir = direction || getTextDirection(currentLang);
@@ -94,18 +100,18 @@ export function DyslexiaReader({
   }, [currentLang]);
 
   const overlayClass = {
-    none: "bg-white",
-    cream: "overlay-cream",
-    yellow: "overlay-yellow",
-    blue: "overlay-blue",
-    peach: "overlay-peach",
-    green: "overlay-green",
+    none: "bg-white/90 backdrop-blur-md",
+    cream: "overlay-cream backdrop-blur-md",
+    yellow: "overlay-yellow backdrop-blur-md",
+    blue: "overlay-blue backdrop-blur-md",
+    peach: "overlay-peach backdrop-blur-md",
+    green: "overlay-green backdrop-blur-md",
   }[settings.colorOverlay || "cream"];
 
   return (
     <div
       dir={currentDir}
-      className={`rounded-2xl p-6 transition-colors ${overlayClass}`}
+      className={`rounded-2xl p-6 transition-colors shadow-sm border border-black/10 ${overlayClass}`}
       style={{
         fontFamily:
           settings.fontFamily === "opendyslexic"
@@ -135,6 +141,33 @@ export function DyslexiaReader({
           </span>
         </div>
       </div>
+
+      {/* Nonblocking notice if translation server used fallback */}
+      {translationFallbackUsed && currentLang !== "en" && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-5 p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex flex-wrap items-center justify-between gap-3 shadow-xs animate-in fade-in"
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>Live translation server is currently busy.</strong> Showing English fallback.
+            </span>
+          </div>
+          {onRetryTranslation && (
+            <button
+              type="button"
+              onClick={onRetryTranslation}
+              disabled={isTranslating}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isTranslating ? "animate-spin" : ""}`} />
+              {isTranslating ? "Retrying..." : "Retry Translation"}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Nonblocking notice if browser TTS lacks voice for target language */}
       {!hasTtsVoice && currentLang !== "en" && (
@@ -172,6 +205,7 @@ export function DyslexiaReader({
         <FocusToolbar
           focus={focus}
           onUpdateFocus={handleUpdateFocus}
+          highContrast={settings.highContrast}
         />
       </div>
 
@@ -183,7 +217,7 @@ export function DyslexiaReader({
               key={chunkIdentifier}
               id={`chunk-${chunkIdentifier}`}
               data-chunk-id={chunkIdentifier}
-              className="p-5 rounded-xl border border-black/10 bg-white/70 shadow-sm transition-all target:ring-4 target:ring-amber-500 target:bg-amber-50"
+              className="p-5 rounded-xl border border-black/10 bg-white/95 backdrop-blur-sm shadow-sm transition-all target:ring-4 target:ring-amber-500 target:bg-amber-50"
             >
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-lg text-slate-900">{section.title}</h3>
@@ -223,7 +257,12 @@ export function DyslexiaReader({
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {section.jargon.map((j, jIdx) => {
-                    const original = "originalTerm" in j ? j.originalTerm : undefined;
+                    const original = ("originalTerm" in j ? j.originalTerm : undefined)?.trim();
+                    const showOriginal = Boolean(
+                      original &&
+                      original.length > 0 &&
+                      !j.term.toLowerCase().includes(original.toLowerCase())
+                    );
                     return (
                       <span
                         key={jIdx}
@@ -233,7 +272,7 @@ export function DyslexiaReader({
                         <span>
                           <strong>
                             {j.term}
-                            {original && original !== j.term ? ` (${original})` : ""}
+                            {showOriginal ? ` (${original})` : ""}
                             :
                           </strong>{" "}
                           {j.plainMeaning}
