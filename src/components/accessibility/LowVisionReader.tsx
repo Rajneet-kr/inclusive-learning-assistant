@@ -19,6 +19,8 @@ import {
   ZoomOut,
   Gauge,
   Sparkles,
+  Globe,
+  RefreshCw,
 } from "lucide-react";
 import { FocusToolbar } from "./FocusToolbar";
 import { ReadingRuler } from "./ReadingRuler";
@@ -38,12 +40,61 @@ const BCP47_LANGUAGE_MAP: Record<string, string> = {
   en: "en-US",
 };
 
+interface SentenceItem {
+  text: string;
+  start: number;
+  end: number;
+  isHeading: boolean;
+}
+
+function extractSentencesForChunk(heading: string, text: string): SentenceItem[] {
+  const items: SentenceItem[] = [];
+
+  const cleanHeading = (heading || "").trim();
+  if (cleanHeading) {
+    items.push({
+      text: cleanHeading,
+      start: 0,
+      end: 0,
+      isHeading: true,
+    });
+  }
+
+  const cleanText = text || "";
+  // Split on standard and Indic sentence terminators (. ! ? । \n)
+  const sentenceRegex = /([^.!?।\n]+[.!?।\n]+|\s+[^.!?।\n]+$)/g;
+  let match: RegExpExecArray | null;
+  while ((match = sentenceRegex.exec(cleanText)) !== null) {
+    const s = match[0].trim();
+    if (s) {
+      items.push({
+        text: s,
+        start: match.index,
+        end: match.index + match[0].length,
+        isHeading: false,
+      });
+    }
+  }
+
+  if (items.length === (cleanHeading ? 1 : 0) && cleanText.trim()) {
+    items.push({
+      text: cleanText.trim(),
+      start: 0,
+      end: cleanText.length,
+      isHeading: false,
+    });
+  }
+
+  return items;
+}
+
 interface LowVisionReaderProps {
   chunks: DocumentChunk[];
   settings: AccessibilitySettings;
   onUpdateSettings: (settings: Partial<AccessibilitySettings>) => void;
   translatedSections?: TranslatedSimplifiedSection[] | null;
   language?: SupportedLanguageCode;
+  convertingSectionIndex?: number | null;
 }
 
 export function LowVisionReader({
@@ -52,15 +103,28 @@ export function LowVisionReader({
   onUpdateSettings,
   translatedSections,
   language,
+  convertingSectionIndex = null,
 }: LowVisionReaderProps) {
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [isPaused, setIsPaused] = React.useState(false);
   const [speakingChunkIndex, setSpeakingChunkIndex] = React.useState<number | null>(null);
   const [spokenCharIndex, setSpokenCharIndex] = React.useState<number>(0);
+  const [playbackMode, setPlaybackMode] = React.useState<"speech_synthesis" | "api_tts">("speech_synthesis");
+  const [activeSentenceRange, setActiveSentenceRange] = React.useState<{ start: number; end: number } | null>(null);
 
   const fallbackTimerRef = React.useRef<NodeJS.Timeout | null>(null);
   const boundaryFiredRef = React.useRef<boolean>(false);
   const isPlayingRef = React.useRef<boolean>(false);
+  const isReadAllRef = React.useRef<boolean>(false);
+
+  // HTMLAudioElement refs for /api/tts multilingual playback
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const audioAbortControllerRef = React.useRef<AbortController | null>(null);
+  const currentAudioUrlRef = React.useRef<string | null>(null);
+  const sentencesQueueRef = React.useRef<SentenceItem[]>([]);
+  const queueIndexRef = React.useRef<number>(0);
+
+  const utteranceRef = React.useRef<SpeechSynthesisUtterance | null>(null);
 
   const clearFallbackTimer = React.useCallback(() => {
     if (fallbackTimerRef.current) {
@@ -98,45 +162,286 @@ export function LowVisionReader({
     }));
   }, [chunks, translatedSections]);
 
-  const utteranceRef = React.useRef<SpeechSynthesisUtterance | null>(null);
-
-  // Stop synthesis on unmount
-  React.useEffect(() => {
-    return () => {
-      clearFallbackTimer();
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
-  }, [clearFallbackTimer]);
-
-  const speakChunk = (chunkIndex: number, startFromBeginning = false) => {
+  /**
+   * Checks whether the user's browser genuinely has an offline or online
+   * speechSynthesis voice installed for the active language.
+   */
+  const hasLocalBrowserVoice = React.useCallback((): boolean => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      alert("Browser SpeechSynthesis not supported.");
-      return;
+      return false;
+    }
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices || voices.length === 0) {
+      return currentLang === "en";
+    }
+    if (currentLang === "en") return true;
+
+    const langPrefix = currentLang.toLowerCase().split(/[-_]/)[0];
+    const bcp47 = (BCP47_LANGUAGE_MAP[langPrefix] || langPrefix).toLowerCase();
+
+    return voices.some((v) => {
+      const vLang = v.lang.toLowerCase().replace(/_/g, "-");
+      return vLang === bcp47 || vLang.startsWith(langPrefix);
+    });
+  }, [currentLang]);
+
+  /**
+   * Stops all active playback (both native SpeechSynthesis and /api/tts HTMLAudioElement)
+   * and resets highlight state.
+   */
+  const stopAllPlayback = React.useCallback(() => {
+    clearFallbackTimer();
+    isPlayingRef.current = false;
+    isReadAllRef.current = false;
+
+    // 1. Cancel SpeechSynthesis
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
     }
 
-    clearFallbackTimer();
-    window.speechSynthesis.cancel();
+    // 2. Abort ongoing fetch
+    if (audioAbortControllerRef.current) {
+      audioAbortControllerRef.current.abort();
+      audioAbortControllerRef.current = null;
+    }
+
+    // 3. Pause and clean audio element
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current.src = "";
+      audioRef.current.ontimeupdate = null;
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current.onplay = null;
+      audioRef.current.onloadedmetadata = null;
+    }
+
+    if (currentAudioUrlRef.current) {
+      URL.revokeObjectURL(currentAudioUrlRef.current);
+      currentAudioUrlRef.current = null;
+    }
+
+    setIsPlaying(false);
+    setIsPaused(false);
+    setSpeakingChunkIndex(null);
+    setSpokenCharIndex(0);
+    setActiveSentenceRange(null);
+    sentencesQueueRef.current = [];
+    queueIndexRef.current = 0;
+  }, [clearFallbackTimer]);
+
+  // Clean up on unmount
+  React.useEffect(() => {
+    return () => {
+      stopAllPlayback();
+    };
+  }, [stopAllPlayback]);
+
+  // Stop playback when language switches to avoid speaking wrong language
+  React.useEffect(() => {
+    stopAllPlayback();
+  }, [currentLang, stopAllPlayback]);
+
+  // Keep audio.playbackRate in sync if settings.ttsRate changes
+  React.useEffect(() => {
+    if (audioRef.current && settings.ttsRate) {
+      audioRef.current.playbackRate = settings.ttsRate;
+      audioRef.current.defaultPlaybackRate = settings.ttsRate;
+    }
+  }, [settings.ttsRate]);
+
+  /**
+   * Plays sentences sequentially from /api/tts with pre-chunking and sentence highlighting.
+   */
+  const playNextSentence = React.useCallback(
+    async (chunkIndex: number, sentenceIndex: number) => {
+      clearFallbackTimer();
+      const queue = sentencesQueueRef.current;
+      if (sentenceIndex >= queue.length) {
+        // Current section finished!
+        if (isReadAllRef.current && chunkIndex + 1 < displayItems.length) {
+          // Advance to next section in Read All mode
+          speakChunk(chunkIndex + 1, true);
+        } else {
+          stopAllPlayback();
+        }
+        return;
+      }
+
+      const sentence = queue[sentenceIndex];
+      queueIndexRef.current = sentenceIndex;
+
+      setIsPlaying(true);
+      isPlayingRef.current = true;
+      setIsPaused(false);
+      setSpeakingChunkIndex(chunkIndex);
+
+      if (sentence.isHeading) {
+        setActiveSentenceRange(null);
+        setSpokenCharIndex(0);
+      } else {
+        setActiveSentenceRange({
+          start: sentence.start,
+          end: sentence.end,
+        });
+        setSpokenCharIndex(sentence.start);
+      }
+
+      // Pre-compute word offsets for this sentence to map timeupdate progress
+      const wordOffsets: number[] = [];
+      const wordRegex = /\S+/g;
+      let m: RegExpExecArray | null;
+      while ((m = wordRegex.exec(sentence.text)) !== null) {
+        wordOffsets.push(sentence.start + m.index);
+      }
+      if (wordOffsets.length === 0) {
+        wordOffsets.push(sentence.start);
+      }
+
+      try {
+        if (audioAbortControllerRef.current) {
+          audioAbortControllerRef.current.abort();
+        }
+        const controller = new AbortController();
+        audioAbortControllerRef.current = controller;
+
+        if (currentAudioUrlRef.current) {
+          URL.revokeObjectURL(currentAudioUrlRef.current);
+          currentAudioUrlRef.current = null;
+        }
+
+        const res = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: sentence.text,
+            lang: currentLang,
+            rate: settings.ttsRate || 1.0,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          throw new Error(`TTS API failed with HTTP ${res.status}`);
+        }
+
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        currentAudioUrlRef.current = objectUrl;
+
+        if (!audioRef.current && typeof Audio !== "undefined") {
+          audioRef.current = new Audio();
+        }
+        const audio = audioRef.current;
+        if (!audio) throw new Error("Audio element unavailable");
+
+        // Clear previous listeners
+        audio.onended = null;
+        audio.onerror = null;
+        audio.ontimeupdate = null;
+        audio.onplay = null;
+        audio.onloadedmetadata = null;
+
+        audio.src = objectUrl;
+
+        const activeRate = settings.ttsRate || 1.0;
+        audio.playbackRate = activeRate;
+        audio.defaultPlaybackRate = activeRate;
+
+        audio.onplay = () => {
+          if (audioRef.current) {
+            audioRef.current.playbackRate = settings.ttsRate || 1.0;
+          }
+        };
+
+        audio.onloadedmetadata = () => {
+          if (audioRef.current) {
+            audioRef.current.playbackRate = settings.ttsRate || 1.0;
+          }
+        };
+
+        // Drive marker progression strictly from actual audio playback progress
+        audio.ontimeupdate = () => {
+          if (!isPlayingRef.current) return;
+          const dur = audio.duration;
+          const cur = audio.currentTime;
+
+          if (dur > 0 && !isNaN(dur) && isFinite(dur)) {
+            // Strictly bounded progress between 0.0 and 1.0
+            const progress = Math.min(1, Math.max(0, cur / dur));
+            const wordIdx = Math.min(
+              wordOffsets.length - 1,
+              Math.floor(progress * wordOffsets.length)
+            );
+            const targetCharIndex = wordOffsets[wordIdx];
+            setSpokenCharIndex(targetCharIndex);
+          }
+        };
+
+        audio.onended = () => {
+          if (isPlayingRef.current) {
+            playNextSentence(chunkIndex, sentenceIndex + 1);
+          }
+        };
+
+        audio.onerror = (e) => {
+          console.error("Audio playback error for sentence:", e);
+          if (isPlayingRef.current) {
+            playNextSentence(chunkIndex, sentenceIndex + 1);
+          }
+        };
+
+        await audio.play();
+        audio.playbackRate = settings.ttsRate || 1.0;
+      } catch (err: any) {
+        if (err.name === "AbortError") return;
+        console.error("TTS playback error in playNextSentence:", err);
+        stopAllPlayback();
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentLang, displayItems, settings.ttsRate, stopAllPlayback, clearFallbackTimer]
+  );
+
+  /**
+   * Main entry point to speak a section (chunk).
+   * Automatically selects native SpeechSynthesis (if English or voice genuinely exists)
+   * or /api/tts HTMLAudioElement queue (if multilingual voice is missing in browser).
+   */
+  const speakChunk = (chunkIndex: number, startFromBeginning = false) => {
+    stopAllPlayback();
 
     if (chunkIndex >= displayItems.length) {
-      setIsPlaying(false);
-      isPlayingRef.current = false;
-      setIsPaused(false);
-      setSpeakingChunkIndex(null);
-      setSpokenCharIndex(0);
+      stopAllPlayback();
       return;
     }
 
     const item = displayItems[chunkIndex];
-    const textToSpeak = `${item.heading}. ${item.text}`;
+    const canUseNative = hasLocalBrowserVoice();
+
+    if (!canUseNative) {
+      // 1. Multilingual Cloud TTS mode (/api/tts)
+      setPlaybackMode("api_tts");
+      isReadAllRef.current = startFromBeginning;
+      const sentences = extractSentencesForChunk(item.heading, item.text);
+      sentencesQueueRef.current = sentences;
+      queueIndexRef.current = 0;
+      playNextSentence(chunkIndex, 0);
+      return;
+    }
+
+    // 2. Native SpeechSynthesis mode
+    setPlaybackMode("speech_synthesis");
+    isReadAllRef.current = startFromBeginning;
+    const textToSpeak = item.heading.trim() ? `${item.heading.trim()}. ${item.text}` : item.text;
+    const headingPrefixLength = item.heading.trim() ? item.heading.trim().length + 2 : 0;
 
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
     utterance.rate = settings.ttsRate || 1.0;
     utterance.pitch = settings.ttsPitch || 1.0;
     utterance.lang = bcp47Locale;
 
-    // Prefer local browser voice matching language for reliable onboundary firing
     const voices = window.speechSynthesis.getVoices();
     let voice = voices.find((v) => v.name === settings.ttsVoice);
     if (!voice) {
@@ -155,11 +460,10 @@ export function LowVisionReader({
       utterance.voice = voice;
     }
 
-    // Pre-calculate word offsets in textToSpeak
     const wordOffsets: number[] = [];
     const wordRegex = /\S+/g;
     let matchExec: RegExpExecArray | null;
-    while ((matchExec = wordRegex.exec(textToSpeak)) !== null) {
+    while ((matchExec = wordRegex.exec(item.text)) !== null) {
       wordOffsets.push(matchExec.index);
     }
 
@@ -172,7 +476,6 @@ export function LowVisionReader({
       boundaryFiredRef.current = false;
       clearFallbackTimer();
 
-      // Check after 400ms if onboundary fired; if not, advance smoothly via calibrated timer
       setTimeout(() => {
         if (!boundaryFiredRef.current && isPlayingRef.current) {
           let wordIdx = 0;
@@ -200,31 +503,23 @@ export function LowVisionReader({
       boundaryFiredRef.current = true;
       clearFallbackTimer();
       if (event.name === "word" || event.name === "sentence") {
-        setSpokenCharIndex(event.charIndex);
+        const adjustedCharIndex = Math.max(0, event.charIndex - headingPrefixLength);
+        setSpokenCharIndex(adjustedCharIndex);
       }
     };
 
     utterance.onend = () => {
       clearFallbackTimer();
-      // If reading through all chunks, continue to next chunk
       if (startFromBeginning && chunkIndex + 1 < displayItems.length) {
         speakChunk(chunkIndex + 1, true);
       } else {
-        setIsPlaying(false);
-        isPlayingRef.current = false;
-        setIsPaused(false);
-        setSpeakingChunkIndex(null);
-        setSpokenCharIndex(0);
+        stopAllPlayback();
       }
     };
 
     utterance.onerror = () => {
       clearFallbackTimer();
-      setIsPlaying(false);
-      isPlayingRef.current = false;
-      setIsPaused(false);
-      setSpeakingChunkIndex(null);
-      setSpokenCharIndex(0);
+      stopAllPlayback();
     };
 
     utteranceRef.current = utterance;
@@ -233,7 +528,15 @@ export function LowVisionReader({
 
   const handlePlayAll = () => {
     if (isPaused) {
-      window.speechSynthesis.resume();
+      if (playbackMode === "api_tts") {
+        if (audioRef.current) {
+          audioRef.current.playbackRate = settings.ttsRate || 1.0;
+          audioRef.current.defaultPlaybackRate = settings.ttsRate || 1.0;
+          audioRef.current.play().catch(console.error);
+        }
+      } else if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.resume();
+      }
       setIsPaused(false);
       setIsPlaying(true);
       isPlayingRef.current = true;
@@ -244,35 +547,38 @@ export function LowVisionReader({
 
   const handlePause = () => {
     clearFallbackTimer();
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    if (playbackMode === "api_tts") {
+      audioRef.current?.pause();
+    } else if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.pause();
-      setIsPaused(true);
-      setIsPlaying(false);
-      isPlayingRef.current = false;
     }
+    setIsPaused(true);
+    setIsPlaying(false);
+    isPlayingRef.current = false;
   };
 
   const handleStop = () => {
-    clearFallbackTimer();
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      setIsPlaying(false);
-      isPlayingRef.current = false;
-      setIsPaused(false);
-      setSpeakingChunkIndex(null);
-      setSpokenCharIndex(0);
-    }
+    stopAllPlayback();
   };
 
   const setSpeed = (rate: number) => {
     onUpdateSettings({ ttsRate: rate });
-    // If currently speaking, restart current chunk with new rate
-    if ((isPlaying || isPaused) && speakingChunkIndex !== null) {
-      speakChunk(speakingChunkIndex, false);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = rate;
+      audioRef.current.defaultPlaybackRate = rate;
+    }
+    if (
+      playbackMode === "speech_synthesis" &&
+      (isPlaying || isPaused) &&
+      speakingChunkIndex !== null
+    ) {
+      speakChunk(speakingChunkIndex, isReadAllRef.current);
     }
   };
 
-  // Render text with word-level or sentence-level highlighting
+  /**
+   * Renders text with word-level (native TTS) or sentence-level (cloud TTS) highlighting.
+   */
   const renderHighlightedText = (text: string, isChunkActive: boolean) => {
     if (!isChunkActive) {
       if (focus.syllableBreakdown) {
@@ -281,19 +587,66 @@ export function LowVisionReader({
       return <span>{text}</span>;
     }
 
-    // Split text into words and highlight word near spokenCharIndex
-    const before = text.slice(0, spokenCharIndex);
-    const after = text.slice(spokenCharIndex);
-    const match = after.match(/^\S+/);
-    const activeWord = match ? match[0] : "";
-    const remaining = match ? after.slice(activeWord.length) : after;
-
     const renderTextContent = (str: string) => {
       if (focus.syllableBreakdown) {
         return <SyllableText text={str} enabled={true} />;
       }
       return str;
     };
+
+    // 1. In API TTS mode: highlight active sentence container with active word marker strictly synced to audio timeupdate
+    if (playbackMode === "api_tts" && activeSentenceRange) {
+      const { start, end } = activeSentenceRange;
+      const safeStart = Math.max(0, Math.min(start, text.length));
+      const safeEnd = Math.max(safeStart, Math.min(end, text.length));
+
+      const before = text.slice(0, safeStart);
+      const activeSentence = text.slice(safeStart, safeEnd);
+      const after = text.slice(safeEnd);
+
+      // Sub-sentence active word marker at spokenCharIndex strictly synced to audio timeupdate
+      const relCharIndex = Math.max(0, Math.min(spokenCharIndex - safeStart, activeSentence.length));
+      const sentBeforeWord = activeSentence.slice(0, relCharIndex);
+      const sentRemaining = activeSentence.slice(relCharIndex);
+      const wordMatch = sentRemaining.match(/^\S+/);
+      const activeWord = wordMatch ? wordMatch[0] : "";
+      const sentAfterWord = wordMatch ? sentRemaining.slice(activeWord.length) : sentRemaining;
+
+      return (
+        <span>
+          <span className="opacity-75">{renderTextContent(before)}</span>
+          <span
+            className={`inline rounded-lg px-1.5 py-0.5 transition-colors ${
+              settings.highContrast
+                ? "bg-zinc-900/90 border border-yellow-400/50"
+                : "bg-blue-50/90 border border-blue-300/60"
+            }`}
+          >
+            <span>{renderTextContent(sentBeforeWord)}</span>
+            {activeWord ? (
+              <mark
+                className={`px-1.5 py-0.5 mx-0.5 rounded font-black tracking-wide inline-block shadow-sm transition-all ${
+                  settings.highContrast
+                    ? "bg-yellow-400 text-black ring-4 ring-yellow-400"
+                    : "bg-blue-600 text-white ring-4 ring-blue-500"
+                }`}
+              >
+                {renderTextContent(activeWord)}
+              </mark>
+            ) : null}
+            <span>{renderTextContent(sentAfterWord)}</span>
+          </span>
+          <span>{renderTextContent(after)}</span>
+        </span>
+      );
+    }
+
+    // 2. In native SpeechSynthesis mode: highlight active word near spokenCharIndex
+    const before = text.slice(0, spokenCharIndex);
+    const after = text.slice(spokenCharIndex);
+    const match = after.match(/^\S+/);
+    const activeWord = match ? match[0] : "";
+    const remaining = match ? after.slice(activeWord.length) : after;
 
     return (
       <span>
@@ -313,6 +666,8 @@ export function LowVisionReader({
       </span>
     );
   };
+
+  const hasBrowserVoice = hasLocalBrowserVoice();
 
   return (
     <div
@@ -335,7 +690,7 @@ export function LowVisionReader({
               Low-Vision High-Contrast Reader
             </h2>
             <p className="text-xs opacity-80 mt-0.5">
-              Reflowable layout &bull; Active Word TTS &bull; WCAG AAA Zoom
+              Reflowable layout &bull; Active Word &amp; Sentence Read Aloud &bull; WCAG AAA Zoom
             </p>
           </div>
         </div>
@@ -348,6 +703,25 @@ export function LowVisionReader({
             settings.highContrast ? "bg-zinc-950" : "bg-slate-50"
           }`}
         >
+          {/* Active Audio Engine Indicator */}
+          <div
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
+              settings.highContrast
+                ? "border-yellow-400/40 text-yellow-300 bg-yellow-950/40"
+                : "border-slate-300 text-slate-700 bg-white"
+            }`}
+            title={
+              hasBrowserVoice
+                ? "Using local browser speech engine"
+                : "Using cloud multilingual audio streaming engine"
+            }
+          >
+            <Globe className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+            <span>
+              {currentLang.toUpperCase()} &bull; {hasBrowserVoice ? "Local Voice" : "Cloud HD TTS"}
+            </span>
+          </div>
+
           {!isPlaying && !isPaused ? (
             <button
               type="button"
@@ -495,6 +869,18 @@ export function LowVisionReader({
                   <h3 className="font-black text-2xl tracking-wide">
                     {item.heading}
                   </h3>
+                  {convertingSectionIndex === idx && (
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold animate-pulse ${
+                        settings.highContrast
+                          ? "bg-yellow-400 text-black font-black"
+                          : "bg-blue-100 text-blue-800 border border-blue-300"
+                      }`}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Converting...
+                    </span>
+                  )}
                 </div>
 
                 <button

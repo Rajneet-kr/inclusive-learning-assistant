@@ -10,7 +10,7 @@ import {
   FocusSettings,
   DEFAULT_FOCUS_SETTINGS,
 } from "@/types/api";
-import { BookOpen, HelpCircle, VolumeX, Globe, AlertTriangle, RefreshCw } from "lucide-react";
+import { BookOpen, HelpCircle, Volume2, Globe, AlertTriangle, RefreshCw } from "lucide-react";
 import { getLanguageOption, getTextDirection, checkBrowserTtsVoiceAvailable } from "@/lib/i18n";
 import { FocusToolbar } from "./FocusToolbar";
 import { ReadingRuler } from "./ReadingRuler";
@@ -28,6 +28,7 @@ interface DyslexiaReaderProps {
   translationFallbackUsed?: boolean;
   onRetryTranslation?: () => void;
   isTranslating?: boolean;
+  convertingSectionIndex?: number | null;
 }
 
 // Client-side Bionic Reading helper: bold the first 40-50% of each word
@@ -62,6 +63,7 @@ export function DyslexiaReader({
   translationFallbackUsed = false,
   onRetryTranslation,
   isTranslating = false,
+  convertingSectionIndex = null,
 }: DyslexiaReaderProps) {
   const currentLang = language || settings.language || "en";
   const currentDir = direction || getTextDirection(currentLang);
@@ -169,17 +171,17 @@ export function DyslexiaReader({
         </div>
       )}
 
-      {/* Nonblocking notice if browser TTS lacks voice for target language */}
+      {/* Nonblocking notice for Multilingual Read Aloud */}
       {!hasTtsVoice && currentLang !== "en" && (
         <div
           role="status"
           aria-live="polite"
-          className="mb-5 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center gap-2"
+          className="mb-5 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-center gap-2"
         >
-          <VolumeX className="w-4 h-4 text-amber-600 shrink-0" />
+          <Volume2 className="w-4 h-4 text-blue-600 shrink-0" />
           <span>
-            <strong>Note on Read Aloud:</strong> Your browser does not currently have an offline speech voice installed for{" "}
-            <strong>{langOption.nativeLabel} ({langOption.label})</strong>. Text display and vocabulary work fully; read-aloud playback may fall back to your default system voice.
+            <strong>Multilingual Read Aloud Enabled:</strong> Full spoken audio for{" "}
+            <strong>{langOption.nativeLabel} ({langOption.label})</strong> is available in the <strong>Low-Vision Reader</strong> tab with active sentence highlighting.
           </span>
         </div>
       )}
@@ -219,8 +221,16 @@ export function DyslexiaReader({
               data-chunk-id={chunkIdentifier}
               className="p-5 rounded-xl border border-black/10 bg-white/95 backdrop-blur-sm shadow-sm transition-all target:ring-4 target:ring-amber-500 target:bg-amber-50"
             >
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-lg text-slate-900">{section.title}</h3>
+            <div className="flex items-center justify-between mb-3 gap-2">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-lg text-slate-900">{section.title}</h3>
+                {convertingSectionIndex === idx && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-300 animate-pulse">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Converting...
+                  </span>
+                )}
+              </div>
               <span className="text-xs font-medium text-slate-500">
                 ~{section.readingTimeSeconds}s read
               </span>

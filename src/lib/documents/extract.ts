@@ -1,7 +1,6 @@
 import { DocumentChunk } from "@/types/api";
 import { generateContentWithFallback, withTimeoutFallback } from "@/lib/ai/gemini";
 import { chunkTextByHeadings } from "./chunk";
-import { sampleBiologyNote } from "@/lib/sampleData";
 
 export interface ExtractedDocumentResult {
   title: string;
@@ -42,14 +41,34 @@ export async function extractDocumentWithGemini(
     text?: string;
     fileBase64?: string;
     mimeType?: string;
+    fileName?: string;
     subject?: string;
     gradeLevel?: string;
   }
 ): Promise<ExtractedDocumentResult> {
+  const defaultTitle = content.fileName
+    ? content.fileName.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ")
+    : content.subject && content.subject !== "General"
+    ? `${content.subject} Notes`
+    : "Uploaded Study Notes";
+
   const primaryAI = async (): Promise<ExtractedDocumentResult> => {
     const parts: Array<string | { inlineData: { data: string; mimeType: string } }> = [];
 
-    if (content.fileBase64 && content.mimeType) {
+    if (content.text) {
+      // Bound text sent to Gemini to keep within token limits and avoid 429/503 timeouts
+      const textForPrompt =
+        content.text.length > 12000
+          ? content.text.slice(0, 12000) +
+            "\n\n[...Additional document content omitted for summary segmentation...]"
+          : content.text;
+
+      parts.push(
+        `Study Material Text to extract and segment (Document Title: ${defaultTitle}, Subject: ${
+          content.subject || "General"
+        }):\n\n${textForPrompt}`
+      );
+    } else if (content.fileBase64 && content.mimeType) {
       parts.push({
         inlineData: {
           data: content.fileBase64,
@@ -57,11 +76,9 @@ export async function extractDocumentWithGemini(
         },
       });
       parts.push(
-        `Extract and segment this document. Subject: ${content.subject || "General"}. Target Grade: ${content.gradeLevel || "High School/College"}.`
-      );
-    } else if (content.text) {
-      parts.push(
-        `Study Material Text to extract and segment (Subject: ${content.subject || "General"}):\n\n${content.text}`
+        `Extract and segment this document. Document Title: ${defaultTitle}. Subject: ${
+          content.subject || "General"
+        }. Target Grade: ${content.gradeLevel || "High School/College"}.`
       );
     } else {
       throw new Error("No text or file provided for ingestion");
@@ -77,11 +94,8 @@ export async function extractDocumentWithGemini(
     const cleanJson = responseText.replace(/```json\n?|\n?```/g, "").trim();
     const parsed = JSON.parse(cleanJson);
 
-    return {
-      title: parsed.title || "Extracted Study Notes",
-      sourceSummary: parsed.sourceSummary || "Summary of extracted concepts.",
-      extractedText: parsed.extractedText || content.text || "",
-      chunks: Array.isArray(parsed.chunks)
+    const extractedChunks: DocumentChunk[] =
+      Array.isArray(parsed.chunks) && parsed.chunks.length > 0
         ? parsed.chunks.map((c: any, idx: number) => ({
             id: c.id || `chunk_${idx + 1}`,
             index: idx,
@@ -89,7 +103,13 @@ export async function extractDocumentWithGemini(
             text: c.text || "",
             keyTerms: Array.isArray(c.keyTerms) ? c.keyTerms : [],
           }))
-        : chunkTextByHeadings(content.text || ""),
+        : chunkTextByHeadings(content.text || "");
+
+    return {
+      title: parsed.title || defaultTitle,
+      sourceSummary: parsed.sourceSummary || `Key concepts extracted from ${defaultTitle}.`,
+      extractedText: content.text || parsed.extractedText || "",
+      chunks: extractedChunks,
       fallbackUsed: false,
     };
   };
@@ -97,20 +117,35 @@ export async function extractDocumentWithGemini(
   const fallbackGenerator = (): ExtractedDocumentResult => {
     if (content.text && content.text.trim()) {
       const chunks = chunkTextByHeadings(content.text);
+      const firstSentences = content.text
+        .split(/(?<=[.?!])\s+/)
+        .slice(0, 3)
+        .join(" ")
+        .slice(0, 240);
+
       return {
-        title: content.subject ? `${content.subject} Notes` : "Pasted Study Notes",
-        sourceSummary: content.text.slice(0, 160) + "...",
+        title: defaultTitle,
+        sourceSummary: firstSentences || `Overview of ${defaultTitle}.`,
         extractedText: content.text,
         chunks,
         fallbackUsed: true,
       };
     }
-    // Return bundled sample note if file processing fails or times out
+
+    // Fallback for unreadable files/images
     return {
-      title: sampleBiologyNote.title,
-      sourceSummary: sampleBiologyNote.sourceSummary,
-      extractedText: sampleBiologyNote.extractedText,
-      chunks: sampleBiologyNote.chunks,
+      title: defaultTitle,
+      sourceSummary: "Document processed with deterministic safe fallback.",
+      extractedText: "Text extraction unavailable for this image. Please use the STEM & Diagram Verbalizer or paste text directly.",
+      chunks: [
+        {
+          id: "chunk_1",
+          index: 0,
+          heading: "Overview",
+          text: "The uploaded file could not be extracted as text. Please paste the lecture text directly or use the STEM Verbalizer for photo diagrams.",
+          keyTerms: ["Upload", "Verification", "Notes"],
+        },
+      ],
       fallbackUsed: true,
     };
   };

@@ -154,11 +154,26 @@ async function translateTextUniversal(text: string, targetLang: string): Promise
 /**
  * Tier 2: Universal Multi-Chunk Machine-Translation Fallback.
  * Translates title, simpleText, keyIdea, and jargon plainMeaning with bounded concurrency (3).
+ * Deduplicates identical strings strictly within a single request using a local Map discarded after completion.
  */
 async function translateSectionsWithHttpFallback(
   sections: TranslatedSimplifiedSection[],
   targetLang: SupportedLanguageCode
 ): Promise<TranslatedSimplifiedSection[]> {
+  // Local deduplication map strictly scoped to this single request invocation (no cross-request state)
+  const requestDeduplicationMap = new Map<string, string>();
+
+  const translateDeduplicated = async (text: string): Promise<string> => {
+    const trimmed = (text || "").trim();
+    if (!trimmed || targetLang === "en") return text;
+    if (requestDeduplicationMap.has(trimmed)) {
+      return requestDeduplicationMap.get(trimmed)!;
+    }
+    const translated = await translateTextUniversal(trimmed, targetLang);
+    requestDeduplicationMap.set(trimmed, translated);
+    return translated;
+  };
+
   const concurrency = 3;
   const results: TranslatedSimplifiedSection[] = [];
 
@@ -167,9 +182,9 @@ async function translateSectionsWithHttpFallback(
     const batchResults = await Promise.all(
       batch.map(async (sec) => {
         const [translatedTitle, translatedSimpleText, translatedKeyIdea] = await Promise.all([
-          translateTextUniversal(sec.title, targetLang).catch(() => sec.title),
-          translateTextUniversal(sec.simpleText, targetLang).catch(() => sec.simpleText),
-          translateTextUniversal(sec.keyIdea, targetLang).catch(() => sec.keyIdea),
+          translateDeduplicated(sec.title).catch(() => sec.title),
+          translateDeduplicated(sec.simpleText).catch(() => sec.simpleText),
+          translateDeduplicated(sec.keyIdea).catch(() => sec.keyIdea),
         ]);
 
         const translatedJargon = await Promise.all(
@@ -179,8 +194,8 @@ async function translateSectionsWithHttpFallback(
             const cleanedOriginal = rawOriginal.replace(/\s*\([^)]*\)\s*$/, "").trim();
 
             const [translatedTerm, translatedMeaning] = await Promise.all([
-              translateTextUniversal(cleanedOriginal, targetLang).catch(() => cleanedOriginal),
-              translateTextUniversal(j.plainMeaning, targetLang).catch(() => j.plainMeaning),
+              translateDeduplicated(cleanedOriginal).catch(() => cleanedOriginal),
+              translateDeduplicated(j.plainMeaning).catch(() => j.plainMeaning),
             ]);
 
             // Deduplicate: If translatedTerm is identical or already includes original, don't duplicate

@@ -15,6 +15,7 @@ import {
   Upload,
   Binary,
   Maximize2,
+  RefreshCw,
 } from "lucide-react";
 import { useAccessibilitySettings } from "@/hooks/useAccessibilitySettings";
 import { AccessibilityToolbar } from "@/components/accessibility/AccessibilityToolbar";
@@ -29,6 +30,7 @@ import { UploadModal } from "@/components/upload/UploadModal";
 import { StemVerbalizerPanel } from "@/components/stem/StemVerbalizerPanel";
 import { TutorPanel } from "@/components/tutor/TutorPanel";
 import { StudyPackExporter } from "@/components/export/StudyPackExporter";
+import { translateSectionLocally, getLocalTranslatorPipeline } from "@/lib/ai/localTranslator";
 import {
   sampleBiologyNote,
   sampleLectureTranscript,
@@ -97,7 +99,8 @@ export default function HomePage() {
   const [practicePlan, setPracticePlan] = React.useState<PracticeResponse>(samplePracticePlan);
   const [transcript, setTranscript] = React.useState<TranscribeResponse>(sampleLectureTranscript);
   const [translatedSections, setTranslatedSections] = React.useState<TranslatedSimplifiedSection[] | null>(null);
-  const [translationCache, setTranslationCache] = React.useState<Record<string, TranslatedSimplifiedSection[]>>({});
+  const [convertingSectionIndex, setConvertingSectionIndex] = React.useState<number | null>(null);
+  const translationAbortControllerRef = React.useRef<AbortController | null>(null);
   const [isTranslating, setIsTranslating] = React.useState(false);
   const [translationFallbackUsed, setTranslationFallbackUsed] = React.useState(false);
   const [statusNotice, setStatusNotice] = React.useState<{
@@ -228,26 +231,32 @@ export default function HomePage() {
     }, 150);
   };
 
-  // Sync activeTab with accessibility profile selection only when a document is loaded
-  // and the user is currently on a reading tab (preserving active STEM or Practice workspaces)
+  // On initial load only, set activeTab to match the saved profile
+  const initialProfileSyncedRef = React.useRef(false);
   React.useEffect(() => {
-    // If user is currently working in STEM or Practice decks, keep their workspace intact
-    if (activeTab === "stem" || activeTab === "practice") {
-      return;
-    }
-
-    // Only switch reading tabs when a document is loaded
-    if (loadedNote && (activeTab === "dyslexia" || activeTab === "low_vision" || activeTab === "hearing")) {
-      if (settings.profile === "dyslexia") setActiveTab("dyslexia");
-      else if (settings.profile === "low_vision") setActiveTab("low_vision");
+    if (!initialProfileSyncedRef.current && isLoaded && settings.profile) {
+      initialProfileSyncedRef.current = true;
+      if (settings.profile === "low_vision") setActiveTab("low_vision");
       else if (settings.profile === "hearing") setActiveTab("hearing");
+      else if (settings.profile === "dyslexia") setActiveTab("dyslexia");
     }
-  }, [settings.profile, loadedNote, activeTab]);
+  }, [isLoaded, settings.profile]);
+
+  // Direct tab selection handler that explicitly sets activeTab without interference
+  const handleTabSelect = React.useCallback(
+    (tab: "dyslexia" | "low_vision" | "hearing" | "practice" | "stem") => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      setActiveTab(tab);
+    },
+    []
+  );
 
   const handleProfileChange = React.useCallback(
     (newProfile: AccessibilityProfile) => {
       setProfile(newProfile);
-      // If a document is loaded and user is currently on one of the 3 reading tabs, switch tab to match
+      // When user explicitly changes profile in AccessibilityToolbar, switch reading tab to match
       if (loadedNote && (activeTab === "dyslexia" || activeTab === "low_vision" || activeTab === "hearing")) {
         if (newProfile === "dyslexia") setActiveTab("dyslexia");
         else if (newProfile === "low_vision") setActiveTab("low_vision");
@@ -260,91 +269,163 @@ export default function HomePage() {
 
   const fetchTranslationForNote = React.useCallback(
     async (note: SampleBiologyNote, lang: SupportedLanguageCode) => {
+      // Abort any ongoing in-flight progressive translation
+      if (translationAbortControllerRef.current) {
+        translationAbortControllerRef.current.abort();
+        translationAbortControllerRef.current = null;
+      }
+
       if (lang === "en") {
         setTranslatedSections(null);
         setTranslationFallbackUsed(false);
-        return;
-      }
-
-      const cacheKey = `${note.documentId}::${lang}`;
-      if (translationCache[cacheKey]) {
-        setTranslatedSections(translationCache[cacheKey]);
-        setTranslationFallbackUsed(false);
-        return;
-      }
-
-      // Route all documents through /api/translate
-      setIsTranslating(true);
-      try {
-        const langOption = getLanguageOption(lang);
-        const res = await fetch("/api/translate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            documentId: note.documentId,
-            targetLanguage: lang,
-            sections: note.simplifiedSections,
-          }),
-        });
-
-        if (res.ok) {
-          const result: TranslationResult = await res.json();
-          if (!result.fallbackUsed && result.sections && result.sections.length > 0) {
-            setTranslatedSections(result.sections);
-            setTranslationFallbackUsed(false);
-            setTranslationCache((prev) => ({ ...prev, [cacheKey]: result.sections }));
-            setStatusNotice({
-              message: `Successfully translated into ${langOption.nativeLabel} (${langOption.label})!`,
-              type: "live",
-            });
-            return;
-          }
-        }
-
-        // If /api/translate returned fallbackUsed or failed, check offline sample fixtures for sample note
-        if (note.documentId === "doc_bio_sample_01") {
-          let fixtureFile = "";
-          if (lang === "hi") fixtureFile = "/samples/biology-notes-hi.json";
-          else if (lang === "es") fixtureFile = "/samples/biology-notes-es.json";
-          else if (lang === "kn") fixtureFile = "/samples/biology-notes-kn.json";
-
-          if (fixtureFile) {
-            try {
-              const fixtureRes = await fetch(fixtureFile);
-              if (fixtureRes.ok) {
-                const fixtureData = await fixtureRes.json();
-                setTranslatedSections(fixtureData.sections);
-                setTranslationFallbackUsed(false);
-                setTranslationCache((prev) => ({ ...prev, [cacheKey]: fixtureData.sections }));
-                setStatusNotice({
-                  message: `Loaded offline pre-translated sample note (${langOption.nativeLabel}).`,
-                  type: "fallback",
-                });
-                return;
-              }
-            } catch (err) {
-              console.warn("Failed to load offline fixture:", err);
-            }
-          }
-        }
-
-        // True offline fallback: English
-        setTranslatedSections(null);
-        setTranslationFallbackUsed(true);
-        setStatusNotice({
-          message: `Live translation server is currently busy. Showing English fallback.`,
-          type: "fallback",
-        });
-      } catch (err) {
-        console.error("Translation request failed:", err);
-        setTranslatedSections(null);
-        setTranslationFallbackUsed(true);
-      } finally {
+        setConvertingSectionIndex(null);
+        setStatusNotice(null);
         setIsTranslating(false);
-        setTimeout(() => setStatusNotice(null), 5000);
+        return;
       }
+
+      const sourceSections = note.simplifiedSections || [];
+      if (sourceSections.length === 0) {
+        setTranslatedSections(null);
+        setIsTranslating(false);
+        return;
+      }
+
+      const controller = new AbortController();
+      translationAbortControllerRef.current = controller;
+
+      setIsTranslating(true);
+      setTranslationFallbackUsed(false);
+      const langOption = getLanguageOption(lang);
+
+      // Progressive array initialized with source sections
+      // so the reader shell renders immediately and sections convert progressively
+      const progressiveSections: TranslatedSimplifiedSection[] = sourceSections.map((sec) => ({
+        ...sec,
+      }));
+      setTranslatedSections([...progressiveSections]);
+
+      let hasAnyFallback = false;
+      let usedLocalEngine = false;
+      let localPipeInstance: any = null;
+
+      // 1. Try preparing local client-side neural translator
+      try {
+        setStatusNotice({
+          message: `Preparing client-side neural translator (NLLB-200) for ${langOption.nativeLabel} (${langOption.label})...`,
+          type: "live",
+        });
+
+        localPipeInstance = await getLocalTranslatorPipeline((progress) => {
+          if (controller.signal.aborted) return;
+          setStatusNotice({
+            message: progress.message || `Loading local neural translation engine...`,
+            type: "live",
+          });
+        });
+        usedLocalEngine = true;
+      } catch (pipeErr) {
+        console.warn("Client-side NLLB pipeline initialization failed, using universal /api/translate:", pipeErr);
+        localPipeInstance = null;
+        usedLocalEngine = false;
+      }
+
+      // 2. Translate section-by-section sequentially
+      for (let i = 0; i < sourceSections.length; i++) {
+        if (controller.signal.aborted) return;
+
+        setConvertingSectionIndex(i);
+        setStatusNotice({
+          message: `Converting Section ${i + 1} of ${sourceSections.length} to ${langOption.nativeLabel} (${langOption.label}) [${
+            usedLocalEngine ? "Local NLLB Engine" : "Live AI Model"
+          }]...`,
+          type: "live",
+        });
+
+        let sectionTranslated = false;
+
+        // Try local neural model first
+        if (localPipeInstance) {
+          try {
+            const localResult = await translateSectionLocally(
+              sourceSections[i],
+              lang,
+              localPipeInstance,
+              (progress) => {
+                if (controller.signal.aborted) return;
+                setStatusNotice({
+                  message: progress.message || `Converting Section ${i + 1}...`,
+                  type: "live",
+                });
+              }
+            );
+
+            if (controller.signal.aborted) return;
+
+            progressiveSections[i] = localResult;
+            setTranslatedSections([...progressiveSections]);
+            sectionTranslated = true;
+          } catch (localTransErr) {
+            console.warn(`Local translation for section ${i + 1} failed, falling back to server API:`, localTransErr);
+            sectionTranslated = false;
+          }
+        }
+
+        // Fallback to server API (/api/translate) if local translator failed or was unavailable
+        if (!sectionTranslated) {
+          try {
+            const res = await fetch("/api/translate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                documentId: note.documentId,
+                targetLanguage: lang,
+                sections: [sourceSections[i]],
+              }),
+              signal: controller.signal,
+            });
+
+            if (controller.signal.aborted) return;
+
+            if (res.ok) {
+              const result: TranslationResult = await res.json();
+              if (result.sections && result.sections.length > 0) {
+                progressiveSections[i] = result.sections[0];
+                // Update state immediately as each section finishes
+                setTranslatedSections([...progressiveSections]);
+                if (result.fallbackUsed) {
+                  hasAnyFallback = true;
+                }
+              }
+            } else {
+              hasAnyFallback = true;
+            }
+          } catch (err: any) {
+            if (err?.name === "AbortError" || controller.signal.aborted) {
+              return;
+            }
+            console.warn(`Translation of section ${i + 1} encountered an error:`, err);
+            hasAnyFallback = true;
+          }
+        }
+      }
+
+      if (controller.signal.aborted) return;
+
+      setConvertingSectionIndex(null);
+      setIsTranslating(false);
+      setTranslationFallbackUsed(hasAnyFallback);
+
+      const engineBadge = usedLocalEngine ? "Client Neural Model (NLLB-200)" : "Live AI Translator";
+      setStatusNotice({
+        message: hasAnyFallback
+          ? `Converted with safe fallback for ${langOption.nativeLabel} (${langOption.label}).`
+          : `All ${sourceSections.length} sections successfully converted to ${langOption.nativeLabel} (${langOption.label}) [${engineBadge}]!`,
+        type: hasAnyFallback ? "fallback" : "live",
+      });
+      setTimeout(() => setStatusNotice(null), 4500);
     },
-    [translationCache]
+    []
   );
 
   const handleLanguageChange = (newLang: SupportedLanguageCode) => {
@@ -377,9 +458,9 @@ export default function HomePage() {
     practice?: PracticeResponse;
     transcript?: TranscribeResponse;
   }) => {
-    // 0. Reset translation cache and state for new document
-    setTranslationCache({});
+    // 0. Reset translation state for new document
     setTranslatedSections(null);
+    setConvertingSectionIndex(null);
 
     // 1. Fully replace current document note state
     setLoadedNote(data.note);
@@ -648,6 +729,7 @@ export default function HomePage() {
         {!isDistractionFree && statusNotice && (
           <div
             role="status"
+            aria-live="polite"
             className={`p-4 rounded-xl border flex items-center justify-between shadow-xs animate-in fade-in backdrop-blur-md ${
               settings.highContrast
                 ? "bg-black/95 border-2 border-yellow-400 text-yellow-300"
@@ -656,12 +738,20 @@ export default function HomePage() {
                 : "bg-emerald-50/90 border-emerald-200/80 text-emerald-950"
             }`}
           >
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+            <div className="flex items-center gap-2.5">
+              {isTranslating ? (
+                <RefreshCw className="w-5 h-5 text-blue-600 animate-spin shrink-0" />
+              ) : (
+                <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+              )}
               <span className="font-semibold text-sm">{statusNotice.message}</span>
             </div>
             <span className="text-xs bg-white/80 font-mono px-2.5 py-1 rounded-md border border-current opacity-80 shrink-0">
-              {statusNotice.type === "live" ? "Gemini & Deepgram Live" : "Offline Fallback"}
+              {isTranslating
+                ? "Converting..."
+                : statusNotice.type === "live"
+                ? "Live AI Model"
+                : "Offline Fallback"}
             </span>
           </div>
         )}
@@ -826,17 +916,17 @@ export default function HomePage() {
             <nav
               role="tablist"
               aria-label="Note View Modes"
-              className="flex flex-wrap gap-2 border-b border-slate-200/80 pb-2"
+              className="flex flex-wrap gap-2 border-b border-slate-200/80 pb-2 relative z-20"
             >
               <button
                 type="button"
                 role="tab"
                 aria-selected={activeTab === "dyslexia"}
-                onClick={() => setActiveTab("dyslexia")}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                onClick={() => handleTabSelect("dyslexia")}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all relative z-10 cursor-pointer ${
                   activeTab === "dyslexia"
                     ? settings.highContrast
-                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400"
+                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400 font-black"
                       : "bg-amber-500 text-white shadow-sm"
                     : settings.highContrast
                     ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border border-yellow-400"
@@ -851,11 +941,11 @@ export default function HomePage() {
                 type="button"
                 role="tab"
                 aria-selected={activeTab === "low_vision"}
-                onClick={() => setActiveTab("low_vision")}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                onClick={() => handleTabSelect("low_vision")}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all relative z-10 cursor-pointer ${
                   activeTab === "low_vision"
                     ? settings.highContrast
-                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400"
+                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400 font-black"
                       : "bg-indigo-600 text-white shadow-sm"
                     : settings.highContrast
                     ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border border-yellow-400"
@@ -870,11 +960,11 @@ export default function HomePage() {
                 type="button"
                 role="tab"
                 aria-selected={activeTab === "hearing"}
-                onClick={() => setActiveTab("hearing")}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                onClick={() => handleTabSelect("hearing")}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all relative z-10 cursor-pointer ${
                   activeTab === "hearing"
                     ? settings.highContrast
-                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400"
+                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400 font-black"
                       : "bg-emerald-600 text-white shadow-sm"
                     : settings.highContrast
                     ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border border-yellow-400"
@@ -889,11 +979,11 @@ export default function HomePage() {
                 type="button"
                 role="tab"
                 aria-selected={activeTab === "practice"}
-                onClick={() => setActiveTab("practice")}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                onClick={() => handleTabSelect("practice")}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all relative z-10 cursor-pointer ${
                   activeTab === "practice"
                     ? settings.highContrast
-                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400"
+                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400 font-black"
                       : "bg-purple-600 text-white shadow-sm"
                     : settings.highContrast
                     ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border border-yellow-400"
@@ -908,11 +998,11 @@ export default function HomePage() {
                 type="button"
                 role="tab"
                 aria-selected={activeTab === "stem"}
-                onClick={() => setActiveTab("stem")}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                onClick={() => handleTabSelect("stem")}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all relative z-10 cursor-pointer ${
                   activeTab === "stem"
                     ? settings.highContrast
-                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400"
+                      ? "bg-yellow-400 text-black shadow-sm ring-2 ring-yellow-400 font-black"
                       : "bg-indigo-600 text-white shadow-sm"
                     : settings.highContrast
                     ? "bg-zinc-900 text-yellow-300 hover:bg-zinc-800 border border-yellow-400"
@@ -938,6 +1028,7 @@ export default function HomePage() {
                   fetchTranslationForNote(loadedNote, settings.language || "en")
                 }
                 isTranslating={isTranslating}
+                convertingSectionIndex={convertingSectionIndex}
               />
             )}
 
@@ -948,6 +1039,7 @@ export default function HomePage() {
                 onUpdateSettings={updateSettings}
                 translatedSections={translatedSections}
                 language={settings.language || "en"}
+                convertingSectionIndex={convertingSectionIndex}
               />
             )}
 

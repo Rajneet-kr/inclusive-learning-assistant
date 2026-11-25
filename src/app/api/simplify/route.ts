@@ -10,7 +10,7 @@ function createDynamicSimplifiedSections(chunks: any[], subject = "Study Materia
   return chunks.map((c: any, idx: number) => {
     const rawText = c.text || "";
     const sentences = rawText.split(/(?<=[.?!])\s+/).filter(Boolean);
-    const simpleText = sentences.slice(0, 3).join(" ") || rawText.slice(0, 180) || "Summary content.";
+    const simpleText = sentences.slice(0, 3).join(" ") || rawText.slice(0, 220) || "Summary content.";
     const keyIdea = sentences[0] || c.heading || "Key concept summary.";
     
     const terms = Array.isArray(c.keyTerms) && c.keyTerms.length > 0
@@ -43,10 +43,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       documentId = "doc_live",
-      chunkIds = [],
       readingLevel = "grade_6",
       maxWordsPerChunk = 60,
-      bionicReading = false,
       language = "en",
       sourceText = "",
       chunks = [],
@@ -60,11 +58,17 @@ export async function POST(request: NextRequest) {
     // Build concise, structured input from chunks for faster Gemini processing
     let textToSimplify = "";
     if (requestChunks.length > 0) {
-      textToSimplify = requestChunks
-        .map((c, i) => `[Chunk ${i + 1}] Heading: ${c.heading}\nText: ${c.text}\nKey Terms: ${(c.keyTerms || []).join(", ")}`)
+      const chunksForAI = requestChunks.slice(0, 8);
+      textToSimplify = chunksForAI
+        .map(
+          (c, i) =>
+            `[Chunk ${i + 1}] Heading: ${c.heading}\nText: ${(c.text || "").slice(0, 260)}\nKey Terms: ${(
+              c.keyTerms || []
+            ).join(", ")}`
+        )
         .join("\n\n");
     } else if (sourceText) {
-      textToSimplify = sourceText.slice(0, 4000);
+      textToSimplify = sourceText.slice(0, 3000);
     } else {
       textToSimplify = sampleBiologyNote.extractedText;
     }
@@ -103,6 +107,15 @@ ${textToSimplify}
               : Math.max(10, Math.ceil((s.simpleText || "").split(" ").length / 2.5)),
         }));
 
+        // If there were more than 8 chunks in the input, append dynamic simplifications for the rest
+        if (requestChunks.length > sections.length) {
+          const remainingSections = createDynamicSimplifiedSections(
+            requestChunks.slice(sections.length),
+            subject
+          );
+          sections.push(...remainingSections);
+        }
+
         return {
           documentId,
           sections,
@@ -127,7 +140,7 @@ ${textToSimplify}
       };
     };
 
-    const result = await withTimeoutFallback(primaryAI, fallbackGenerator, 14000);
+    const result = await withTimeoutFallback(primaryAI, fallbackGenerator, 10000);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Error in /api/simplify:", error);

@@ -53,20 +53,30 @@ async function callWithTransientRetry(
       throw err;
     }
 
-    const is429OrNetwork =
+    const is429 =
       msg.includes("429") ||
       msg.includes("Too Many Requests") ||
-      msg.includes("RESOURCE_EXHAUSTED") ||
+      msg.includes("RESOURCE_EXHAUSTED");
+
+    // HTTP 429 (Rate Limit): Fail over immediately to avoid 40+ second hangs from repeated retry loops
+    if (is429) {
+      console.warn(
+        `Gemini model ${modelName} 429 rate limit. Failing over immediately to fallback...`
+      );
+      throw err;
+    }
+
+    const isNetworkDrop =
       msg.includes("fetch failed") ||
       msg.includes("ECONNRESET") ||
       msg.includes("ETIMEDOUT");
 
-    // 429 or transient network drop: retry once after 300ms
-    if (is429OrNetwork) {
+    // Transient socket/network drop: retry once after 200ms
+    if (isNetworkDrop) {
       console.warn(
-        `Gemini model ${modelName} rate limit/transient drop (${msg.slice(0, 80)}...). Retrying once in 300ms...`
+        `Gemini model ${modelName} transient drop (${msg.slice(0, 80)}...). Retrying once in 200ms...`
       );
-      await sleep(300);
+      await sleep(200);
       const retryResult = await modelInstance.generateContent(parts);
       return retryResult.response.text();
     }
