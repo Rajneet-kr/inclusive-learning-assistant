@@ -20,6 +20,7 @@ import {
 import { useAccessibilitySettings } from "@/hooks/useAccessibilitySettings";
 import { AccessibilityToolbar } from "@/components/accessibility/AccessibilityToolbar";
 import { DyslexiaReader } from "@/components/accessibility/DyslexiaReader";
+import { MyDifficultConcepts } from "@/components/accessibility/MyDifficultConcepts";
 import { LowVisionReader } from "@/components/accessibility/LowVisionReader";
 import { TranscriptViewer } from "@/components/accessibility/TranscriptViewer";
 import { CaptionPanel } from "@/components/accessibility/CaptionPanel";
@@ -1015,22 +1016,35 @@ export default function HomePage() {
             </nav>
 
             {/* View Mode Panels */}
-            {activeTab === "dyslexia" && (
-              <DyslexiaReader
-                sections={translatedSections || loadedNote.simplifiedSections}
-                settings={settings}
-                language={settings.language || "en"}
-                direction={getTextDirection(settings.language || "en")}
-                onUpdateSettings={updateSettings}
-                translationFallbackUsed={translationFallbackUsed}
-                onRetryTranslation={() =>
-                  loadedNote &&
-                  fetchTranslationForNote(loadedNote, settings.language || "en")
-                }
-                isTranslating={isTranslating}
-                convertingSectionIndex={convertingSectionIndex}
-              />
-            )}
+          
+{/* View Mode Panels */}
+{activeTab === "dyslexia" && (
+  <>
+    <DyslexiaReader
+      sections={translatedSections || loadedNote.simplifiedSections}
+      documentId={loadedNote.documentId}
+      settings={settings}
+      language={settings.language || "en"}
+      direction={getTextDirection(settings.language || "en")}
+      onUpdateSettings={updateSettings}
+      translationFallbackUsed={translationFallbackUsed}
+      onRetryTranslation={() =>
+        loadedNote &&
+        fetchTranslationForNote(loadedNote, settings.language || "en")
+      }
+      isTranslating={isTranslating}
+      convertingSectionIndex={convertingSectionIndex}
+    />
+
+    {/* My Difficult Concepts */}
+    <div className="mt-6">
+      <MyDifficultConcepts
+        documentId={loadedNote.documentId}
+      />
+    </div>
+  </>
+)}
+
 
             {activeTab === "low_vision" && (
               <LowVisionReader
