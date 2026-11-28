@@ -1,9 +1,9 @@
 /**
  * Client-Side Prebuilt Translation Engine using @huggingface/transformers
- * Model: Xenova/nllb-200-distilled-600M (Quantized q8 / q4 with WebGPU -> WASM/CPU fallback)
+ * Model: Xenova/nllb-200-distilled-600M
  *
- * Translates without third-party API keys or rate-limits.
- * Strictly adheres to zero cross-file/cross-document caching.
+ * Uses sequential translation to reduce browser memory pressure.
+ * WebGPU -> WASM/CPU fallback.
  */
 
 import { SupportedLanguageCode, TranslatedSimplifiedSection } from "@/types/api";
@@ -23,7 +23,7 @@ export const NLLB_LANGUAGE_MAP: Record<string, string> = {
 
 const NLLB_MODEL_ID = "Xenova/nllb-200-distilled-600M";
 
-// Client-side singleton pipeline handle (in-memory for active browser tab only, no disk/cross-file cache)
+// Reuse one model pipeline within the active browser session.
 let translatorPipelinePromise: Promise<any> | null = null;
 
 export interface TranslationProgressEvent {
@@ -33,14 +33,14 @@ export interface TranslationProgressEvent {
 }
 
 /**
- * Initializes or returns the client-side NLLB-200 translation pipeline.
- * Tries WebGPU first for fast hardware acceleration, falling back smoothly to WASM/CPU.
+ * Initializes or returns the translation pipeline.
+ * WebGPU is attempted first, with WASM/CPU fallback.
  */
 export async function getLocalTranslatorPipeline(
   onProgress?: (event: TranslationProgressEvent) => void
 ): Promise<any> {
   if (typeof window === "undefined") {
-    throw new Error("Client-side translation pipeline can only be loaded in a browser environment.");
+    throw new Error("Translation pipeline can only be loaded in the browser.");
   }
 
   if (translatorPipelinePromise) {
@@ -56,63 +56,65 @@ export async function getLocalTranslatorPipeline(
 
       const { pipeline, env } = await import("@huggingface/transformers");
 
-      // Configure transformers.js browser environment
       env.allowLocalModels = false;
 
-      const hasWebGPU = typeof navigator !== "undefined" && "gpu" in navigator;
+      const hasWebGPU =
+        typeof navigator !== "undefined" && "gpu" in navigator;
 
-      let pipe: any;
+      const progressCallback = (p: any) => {
+        if (p?.status === "progress" && typeof p.progress === "number") {
+          onProgress?.({
+            status: "downloading",
+            message: `Loading local neural translation model (${Math.round(
+              p.progress
+            )}%)...`,
+            progress: p.progress,
+          });
+        }
+      };
+
+      // Try WebGPU first
       if (hasWebGPU) {
         try {
-          pipe = await pipeline("translation", NLLB_MODEL_ID, {
+          const pipe = await pipeline("translation", NLLB_MODEL_ID, {
             dtype: "q8",
             device: "webgpu",
-            progress_callback: (p: any) => {
-              if (p?.status === "progress" && typeof p.progress === "number") {
-                onProgress?.({
-                  status: "downloading",
-                  message: `Loading local neural translation model (${Math.round(p.progress)}%)...`,
-                  progress: p.progress,
-                });
-              }
-            },
+            progress_callback: progressCallback,
           });
+
           onProgress?.({
             status: "ready",
-            message: "Local neural translation engine ready (WebGPU accelerated).",
+            message: "Local neural translation engine ready (WebGPU).",
           });
+
           return pipe;
-        } catch (webgpuErr) {
-          console.warn("WebGPU not available or failed for NLLB, falling back to CPU/WASM:", webgpuErr);
+        } catch (error) {
+          console.warn("WebGPU translation failed. Trying WASM/CPU.", error);
         }
       }
 
-      // Default WASM / CPU fallback
-      pipe = await pipeline("translation", NLLB_MODEL_ID, {
+      // Fallback to WASM/CPU
+      const pipe = await pipeline("translation", NLLB_MODEL_ID, {
         dtype: "q8",
-        progress_callback: (p: any) => {
-          if (p?.status === "progress" && typeof p.progress === "number") {
-            onProgress?.({
-              status: "downloading",
-              message: `Loading local neural translation model (${Math.round(p.progress)}%)...`,
-              progress: p.progress,
-            });
-          }
-        },
+        progress_callback: progressCallback,
       });
 
       onProgress?.({
         status: "ready",
         message: "Local neural translation engine ready (WASM/CPU).",
       });
+
       return pipe;
-    } catch (err) {
+    } catch (error) {
+      // Reset so a future attempt can retry.
       translatorPipelinePromise = null;
+
       onProgress?.({
         status: "error",
         message: "Failed to load local neural translation engine.",
       });
-      throw err;
+
+      throw error;
     }
   })();
 
@@ -120,7 +122,7 @@ export async function getLocalTranslatorPipeline(
 }
 
 /**
- * Translates a single text string using the local NLLB pipeline.
+ * Translates one text string.
  */
 export async function translateTextLocally(
   text: string,
@@ -129,9 +131,11 @@ export async function translateTextLocally(
   onProgress?: (event: TranslationProgressEvent) => void
 ): Promise<string> {
   const clean = (text || "").trim();
+
   if (!clean || targetLang === "en") return text;
 
   const targetCode = NLLB_LANGUAGE_MAP[targetLang];
+
   if (!targetCode) {
     throw new Error(`Unsupported target language code: ${targetLang}`);
   }
@@ -144,15 +148,14 @@ export async function translateTextLocally(
   });
 
   const translatedText = output?.[0]?.translation_text;
+
   return typeof translatedText === "string" && translatedText.trim()
     ? translatedText.trim()
     : clean;
 }
 
 /**
- * Translates a single section locally using NLLB-200.
- * Translates title, simpleText, keyIdea, and jargon items.
- * Strictly maintains zero cross-file/cross-document caching.
+ * Translates a section sequentially to reduce concurrent inference workload.
  */
 export async function translateSectionLocally(
   section: TranslatedSimplifiedSection,
@@ -164,39 +167,94 @@ export async function translateSectionLocally(
 
   const pipe = pipeInstance || (await getLocalTranslatorPipeline(onProgress));
 
-  // 1. Translate Title, SimpleText, and KeyIdea
-  const [translatedTitle, translatedSimpleText, translatedKeyIdea] = await Promise.all([
-    translateTextLocally(section.title, targetLang, pipe).catch(() => section.title),
-    translateTextLocally(section.simpleText, targetLang, pipe).catch(() => section.simpleText),
-    translateTextLocally(section.keyIdea, targetLang, pipe).catch(() => section.keyIdea),
-  ]);
+  // Translate one field at a time instead of using Promise.all.
+  let translatedTitle = section.title;
+  let translatedSimpleText = section.simpleText;
+  let translatedKeyIdea = section.keyIdea;
 
-  // 2. Translate Jargon with original English terms preserved
-  const translatedJargon = await Promise.all(
-    (section.jargon || []).map(async (j) => {
-      const rawOriginal = (j.originalTerm || j.term).trim();
-      const cleanedOriginal = rawOriginal.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  try {
+    translatedTitle = await translateTextLocally(
+      section.title,
+      targetLang,
+      pipe,
+      onProgress
+    );
+  } catch (error) {
+    console.warn("Title translation failed.", error);
+  }
 
-      const [translatedTerm, translatedMeaning] = await Promise.all([
-        translateTextLocally(cleanedOriginal, targetLang, pipe).catch(() => cleanedOriginal),
-        translateTextLocally(j.plainMeaning, targetLang, pipe).catch(() => j.plainMeaning),
-      ]);
+  try {
+    translatedSimpleText = await translateTextLocally(
+      section.simpleText,
+      targetLang,
+      pipe,
+      onProgress
+    );
+  } catch (error) {
+    console.warn("Section text translation failed.", error);
+  }
 
-      let finalTerm = translatedTerm.trim();
-      const lowerTrans = finalTerm.toLowerCase();
-      const lowerOrig = cleanedOriginal.toLowerCase();
+  try {
+    translatedKeyIdea = await translateTextLocally(
+      section.keyIdea,
+      targetLang,
+      pipe,
+      onProgress
+    );
+  } catch (error) {
+    console.warn("Key idea translation failed.", error);
+  }
 
-      if (lowerTrans !== lowerOrig && !finalTerm.includes(`(${cleanedOriginal})`)) {
-        finalTerm = `${finalTerm} (${cleanedOriginal})`;
-      }
+  // Translate jargon sequentially.
+  const translatedJargon = [];
 
-      return {
-        term: finalTerm,
-        originalTerm: cleanedOriginal,
-        plainMeaning: translatedMeaning,
-      };
-    })
-  );
+  for (const j of section.jargon || []) {
+    const rawOriginal = (j.originalTerm || j.term).trim();
+
+    const cleanedOriginal = rawOriginal
+      .replace(/\s*\([^)]*\)\s*$/, "")
+      .trim();
+
+    let translatedTerm = cleanedOriginal;
+    let translatedMeaning = j.plainMeaning;
+
+    try {
+      translatedTerm = await translateTextLocally(
+        cleanedOriginal,
+        targetLang,
+        pipe,
+        onProgress
+      );
+    } catch (error) {
+      console.warn("Jargon term translation failed.", error);
+    }
+
+    try {
+      translatedMeaning = await translateTextLocally(
+        j.plainMeaning,
+        targetLang,
+        pipe,
+        onProgress
+      );
+    } catch (error) {
+      console.warn("Jargon meaning translation failed.", error);
+    }
+
+    let finalTerm = translatedTerm.trim();
+
+    if (
+      finalTerm.toLowerCase() !== cleanedOriginal.toLowerCase() &&
+      !finalTerm.includes(`(${cleanedOriginal})`)
+    ) {
+      finalTerm = `${finalTerm} (${cleanedOriginal})`;
+    }
+
+    translatedJargon.push({
+      term: finalTerm,
+      originalTerm: cleanedOriginal,
+      plainMeaning: translatedMeaning,
+    });
+  }
 
   return {
     chunkId: section.chunkId,
