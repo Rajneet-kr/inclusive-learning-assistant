@@ -460,3 +460,45 @@ export interface OfflineStudyPack {
     estimatedMinutes: number;
   }>;
 }
+// ==========================================
+// 9. I'm Stuck - Contextual Learning Assistant
+// ==========================================
+
+export type StuckDifficultyType =
+  | "difficult_word"
+  | "long_sentence"
+  | "unclear_concept";
+
+export interface StuckHelperRequest {
+  documentId: string;
+  selectedText: string;
+  contextText: string;
+  conceptTitle?: string;
+  difficultyType: StuckDifficultyType;
+  language?: SupportedLanguageCode;
+  accessibilityProfile?: AccessibilityProfile;
+}
+
+export interface StuckHelperResponse {
+  selectedText: string;
+  difficultyType: StuckDifficultyType;
+  simplerExplanation: string;
+  realWorldExample: string;
+  checkQuestion: string;
+  fallbackUsed: boolean;
+}
+
+export interface DifficultConcept {
+  id: string;
+  documentId: string;
+  selectedText: string;
+  contextText: string;
+  conceptTitle: string;
+  difficultyType: StuckDifficultyType;
+  simplerExplanation: string;
+  realWorldExample: string;
+  checkQuestion: string;
+  language: SupportedLanguageCode;
+  createdAt: string;
+  understood?: boolean;
+}
