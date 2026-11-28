@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractDocumentWithGemini } from "@/lib/documents/extract";
 import { extractTextFromPdf } from "@/lib/documents/pdf";
+import { cleanPdfLayoutText } from "@/lib/documents/pdfLayoutCleaner";
 import { IngestResponse, InputKind, AccessibilityProfile } from "@/types/api";
 
 export const maxDuration = 60;
@@ -53,7 +54,8 @@ export async function POST(request: NextRequest) {
                 { status: 422 }
               );
             }
-            pastedText = pdfResult.text;
+            const extractedText = pdfResult.text;
+            pastedText = cleanPdfLayoutText(extractedText);
           } catch (pdfErr: any) {
             return NextResponse.json(
               {
