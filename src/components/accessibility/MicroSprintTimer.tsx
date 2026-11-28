@@ -1,10 +1,21 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Play, Pause, RotateCcw, Clock, CheckCircle2 } from "lucide-react";
 
+type SprintMinutes = 3 | 5 | 10 | 15 | 25;
+const SPRINT_PRESETS: readonly SprintMinutes[] = [3, 5, 10, 15, 25];
+
+function speakSprintAnnouncement(message: string) {
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    const utterance = new SpeechSynthesisUtterance(message);
+    utterance.rate = 1.0;
+    window.speechSynthesis.speak(utterance);
+  }
+}
+
 interface MicroSprintTimerProps {
-  initialMinutes?: 5 | 10 | 15 | 25;
+  initialMinutes?: SprintMinutes;
   onSprintComplete?: (minutes: number) => void;
   className?: string;
   highContrast?: boolean;
@@ -16,17 +27,26 @@ export function MicroSprintTimer({
   className = "",
   highContrast = false,
 }: MicroSprintTimerProps) {
-  const [selectedMinutes, setSelectedMinutes] = useState<5 | 10 | 15 | 25>(initialMinutes);
+  const [selectedMinutes, setSelectedMinutes] = useState<SprintMinutes>(initialMinutes);
   const [secondsRemaining, setSecondsRemaining] = useState<number>(initialMinutes * 60);
   const [isActive, setIsActive] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
 
+  const hasAnnouncedStartRef = useRef(false);
+  const hasAnnouncedHalfwayRef = useRef(false);
+
   const totalSeconds = selectedMinutes * 60;
+  const halfwaySeconds = Math.floor(totalSeconds / 2);
   const progressPercent = Math.min(100, Math.round(((totalSeconds - secondsRemaining) / totalSeconds) * 100));
 
-  // Timer interval
+  // Timer interval & milestone TTS announcements
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
+
+    if (isActive && secondsRemaining === halfwaySeconds && !hasAnnouncedHalfwayRef.current) {
+      hasAnnouncedHalfwayRef.current = true;
+      speakSprintAnnouncement("Halfway point reached");
+    }
 
     if (isActive && secondsRemaining > 0) {
       interval = setInterval(() => {
@@ -38,33 +58,35 @@ export function MicroSprintTimer({
       if (onSprintComplete) {
         onSprintComplete(selectedMinutes);
       }
-
-      // Calm, positive browser speech chime
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        const utterance = new SpeechSynthesisUtterance(
-          `Great focus session. You have completed your ${selectedMinutes} minute study sprint.`
-        );
-        utterance.rate = 1.0;
-        window.speechSynthesis.speak(utterance);
-      }
+      speakSprintAnnouncement("Focus sprint ends now");
     }
 
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isActive, secondsRemaining, selectedMinutes, onSprintComplete]);
+  }, [isActive, secondsRemaining, halfwaySeconds, selectedMinutes, onSprintComplete]);
 
-  const handleSelectMinutes = (m: 5 | 10 | 15 | 25) => {
+  const handleSelectMinutes = (m: SprintMinutes) => {
     setSelectedMinutes(m);
     setSecondsRemaining(m * 60);
     setIsActive(false);
     setIsCompleted(false);
+    hasAnnouncedStartRef.current = false;
+    hasAnnouncedHalfwayRef.current = false;
   };
 
   const handleTogglePlay = () => {
-    if (isCompleted) {
-      setSecondsRemaining(selectedMinutes * 60);
-      setIsCompleted(false);
+    if (!isActive) {
+      if (isCompleted) {
+        setSecondsRemaining(selectedMinutes * 60);
+        setIsCompleted(false);
+        hasAnnouncedStartRef.current = false;
+        hasAnnouncedHalfwayRef.current = false;
+      }
+      if (!hasAnnouncedStartRef.current) {
+        hasAnnouncedStartRef.current = true;
+        speakSprintAnnouncement("Timer started");
+      }
     }
     setIsActive(!isActive);
   };
@@ -73,6 +95,8 @@ export function MicroSprintTimer({
     setIsActive(false);
     setIsCompleted(false);
     setSecondsRemaining(selectedMinutes * 60);
+    hasAnnouncedStartRef.current = false;
+    hasAnnouncedHalfwayRef.current = false;
   };
 
   const formatTime = (secs: number) => {
@@ -108,7 +132,7 @@ export function MicroSprintTimer({
             Focus Sprint:
           </span>
           <div className="flex items-center gap-1" role="radiogroup" aria-label="Sprint duration in minutes">
-            {([5, 10, 15, 25] as const).map((m) => (
+            {SPRINT_PRESETS.map((m) => (
               <button
                 key={m}
                 type="button"

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 
 interface LineFocusMaskProps {
   visibleLines?: 1 | 2 | 3;
@@ -12,40 +12,86 @@ export function LineFocusMask({
   enabled = true,
 }: LineFocusMaskProps) {
   // Height of the clear slit depends on visible lines
-  // 1 line ~ 40px, 2 lines ~ 80px, 3 lines ~ 120px
+  // 1 line ~ 44px, 2 lines ~ 84px, 3 lines ~ 124px
   const bandHeight = visibleLines === 1 ? 44 : visibleLines === 2 ? 84 : 124;
 
-  const [bandY, setBandY] = useState<number>(200);
+  const bandYRef = useRef<number>(200);
+  const rafRef = useRef<number | null>(null);
+  const topCurtainRef = useRef<HTMLDivElement>(null);
+  const focusBandRef = useRef<HTMLDivElement>(null);
+  const bottomCurtainRef = useRef<HTMLDivElement>(null);
 
-  // Track mouse position smoothly across the window
+  const applyTransform = useCallback(
+    (y: number) => {
+      const clampedY = Math.max(
+        0,
+        typeof window !== "undefined"
+          ? Math.min(window.innerHeight - bandHeight, y)
+          : y
+      );
+      bandYRef.current = clampedY;
+
+      if (topCurtainRef.current) {
+        topCurtainRef.current.style.transform = `translate3d(0, calc(${clampedY}px - 100%), 0)`;
+      }
+      if (focusBandRef.current) {
+        focusBandRef.current.style.transform = `translate3d(0, ${clampedY}px, 0)`;
+      }
+      if (bottomCurtainRef.current) {
+        bottomCurtainRef.current.style.transform = `translate3d(0, ${clampedY + bandHeight}px, 0)`;
+      }
+    },
+    [bandHeight]
+  );
+
+  // Re-apply transform immediately if visibleLines (bandHeight) changes
+  useEffect(() => {
+    if (!enabled) return;
+    applyTransform(bandYRef.current);
+  }, [enabled, applyTransform]);
+
+  // Track pointer position at display refresh rate with zero React re-renders
   useEffect(() => {
     if (!enabled) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
-      setBandY(Math.max(0, e.clientY - bandHeight / 2));
+    const handlePointerMove = (e: PointerEvent) => {
+      const targetY = e.clientY - bandHeight / 2;
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      rafRef.current = requestAnimationFrame(() => {
+        applyTransform(targetY);
+        rafRef.current = null;
+      });
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, [enabled, bandHeight]);
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [enabled, bandHeight, applyTransform]);
 
-  // Keyboard adjustment
+  // Keyboard adjustment (Alt + ArrowUp / ArrowDown)
   useEffect(() => {
     if (!enabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.altKey && e.key === "ArrowDown") {
         e.preventDefault();
-        setBandY((prev) => Math.min(window.innerHeight - bandHeight, prev + 30));
+        applyTransform(bandYRef.current + 30);
       } else if (e.altKey && e.key === "ArrowUp") {
         e.preventDefault();
-        setBandY((prev) => Math.max(0, prev - 30));
+        applyTransform(bandYRef.current - 30);
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [enabled, bandHeight]);
+  }, [enabled, applyTransform]);
 
   if (!enabled) return null;
 
@@ -54,20 +100,38 @@ export function LineFocusMask({
       aria-hidden="true"
       className="fixed inset-0 z-30 pointer-events-none select-none overflow-hidden"
     >
-      {/* Top Dimming Curtain */}
+      {/* Top Dimming Curtain (GPU-accelerated translate3d) */}
       <div
-        style={{ height: `${Math.max(0, bandY)}px` }}
-        className="w-full bg-slate-900/60 backdrop-blur-[1px] transition-[height] duration-75 motion-reduce:transition-none"
+        ref={topCurtainRef}
+        style={{
+          height: "100vh",
+          transform: `translate3d(0, calc(${bandYRef.current}px - 100%), 0)`,
+          willChange: "transform",
+        }}
+        className="fixed left-0 right-0 top-0 bg-slate-900/60 backdrop-blur-[1px]"
       />
 
       {/* Clear Focus Band with Soft Accent Borders */}
       <div
-        style={{ height: `${bandHeight}px` }}
-        className="w-full border-y border-amber-400/80 shadow-[0_0_15px_rgba(251,191,36,0.15)] bg-transparent"
+        ref={focusBandRef}
+        style={{
+          height: `${bandHeight}px`,
+          transform: `translate3d(0, ${bandYRef.current}px, 0)`,
+          willChange: "transform",
+        }}
+        className="fixed left-0 right-0 top-0 border-y border-amber-400/80 shadow-[0_0_15px_rgba(251,191,36,0.15)] bg-transparent"
       />
 
-      {/* Bottom Dimming Curtain */}
-      <div className="w-full flex-1 bg-slate-900/60 backdrop-blur-[1px] h-screen" />
+      {/* Bottom Dimming Curtain (GPU-accelerated translate3d) */}
+      <div
+        ref={bottomCurtainRef}
+        style={{
+          height: "100vh",
+          transform: `translate3d(0, ${bandYRef.current + bandHeight}px, 0)`,
+          willChange: "transform",
+        }}
+        className="fixed left-0 right-0 top-0 bg-slate-900/60 backdrop-blur-[1px]"
+      />
     </div>
   );
 }
