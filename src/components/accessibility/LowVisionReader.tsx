@@ -11,7 +11,6 @@ import {
 } from "@/types/api";
 import {
   Eye,
-  Volume2,
   Square,
   Play,
   Pause,
@@ -576,6 +575,12 @@ export function LowVisionReader({
     }
   };
 
+  const stepSpeed = (delta: number) => {
+    const current = settings.ttsRate || 1.0;
+    const next = Math.min(2.0, Math.max(0.5, Number((current + delta).toFixed(2))));
+    setSpeed(next);
+  };
+
   /**
    * Renders text with word-level (native TTS) or sentence-level (cloud TTS) highlighting.
    */
@@ -883,19 +888,97 @@ export function LowVisionReader({
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => speakChunk(idx, false)}
-                  className={`px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 border-2 border-current transition-all ${
-                    isChunkActive
-                      ? "bg-yellow-400 text-black border-yellow-400 font-black shadow-sm"
-                      : "hover:opacity-80"
+                {/* Per-Chunk Play, Stop, and Speed Controls */}
+                <div
+                  role="region"
+                  aria-label={`Audio controls for section ${idx + 1}`}
+                  className={`flex flex-wrap items-center gap-2 p-1.5 rounded-xl border-2 border-current ${
+                    settings.highContrast ? "bg-zinc-950" : "bg-slate-50"
                   }`}
-                  aria-label={`Read section ${idx + 1}: ${item.heading}`}
                 >
-                  <Volume2 className="w-4 h-4" />
-                  {isChunkActive ? "Reading Now..." : "Read This Section"}
-                </button>
+                  {!isChunkActive ? (
+                    <button
+                      type="button"
+                      onClick={() => speakChunk(idx, false)}
+                      className={`px-3.5 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 ${
+                        settings.highContrast
+                          ? "bg-yellow-400 text-black hover:bg-yellow-300 font-black"
+                          : "bg-blue-600 text-white hover:bg-blue-700"
+                      }`}
+                      aria-label={`Play section ${idx + 1}: ${item.heading}`}
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      Play
+                    </button>
+                  ) : isPlaying ? (
+                    <button
+                      type="button"
+                      onClick={handlePause}
+                      className="px-3.5 py-1.5 rounded-lg font-black text-xs flex items-center gap-1.5 bg-amber-500 text-black hover:bg-amber-400"
+                      aria-label={`Pause section ${idx + 1}`}
+                    >
+                      <Pause className="w-3.5 h-3.5 fill-current" />
+                      Pause
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handlePlayAll}
+                      className="px-3.5 py-1.5 rounded-lg font-black text-xs flex items-center gap-1.5 bg-emerald-500 text-black hover:bg-emerald-400"
+                      aria-label={`Resume section ${idx + 1}`}
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      Resume
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleStop}
+                    disabled={!isChunkActive}
+                    className={`px-3 py-1.5 rounded-lg font-black text-xs flex items-center gap-1.5 transition-opacity ${
+                      isChunkActive
+                        ? "bg-red-600 text-white hover:bg-red-700"
+                        : "border border-current opacity-40 cursor-not-allowed"
+                    }`}
+                    aria-label={`Stop reading section ${idx + 1}`}
+                  >
+                    <Square className="w-3.5 h-3.5 fill-current" />
+                    Stop
+                  </button>
+
+                  {/* Speed Decrease / Increase Controls */}
+                  <div className="flex items-center gap-1 pl-2 border-l border-current">
+                    <Gauge className="w-3.5 h-3.5 opacity-70" />
+                    <button
+                      type="button"
+                      onClick={() => stepSpeed(-0.25)}
+                      disabled={(settings.ttsRate || 1.0) <= 0.5}
+                      className="px-2 py-0.5 rounded border border-current text-xs font-black hover:opacity-80 disabled:opacity-35 disabled:cursor-not-allowed"
+                      title="Decrease reading speed"
+                      aria-label="Decrease reading speed"
+                    >
+                      -
+                    </button>
+                    <span className="font-mono text-xs font-black px-1 min-w-[3.25ch] text-center">
+                      {settings.ttsRate || 1.0}x
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => stepSpeed(0.25)}
+                      disabled={(settings.ttsRate || 1.0) >= 2.0}
+                      className={`px-2 py-0.5 rounded text-xs font-black transition-colors disabled:opacity-35 disabled:cursor-not-allowed ${
+                        settings.highContrast
+                          ? "bg-yellow-400 text-black hover:bg-yellow-300"
+                          : "bg-blue-600 text-white hover:bg-blue-700"
+                      }`}
+                      title="Increase reading speed"
+                      aria-label="Increase reading speed"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {item.keyIdea && (
